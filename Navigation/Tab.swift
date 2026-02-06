@@ -1,17 +1,2 @@
-import SwiftUI
-
-enum AppTab: CaseIterable {
-    case friends
-    case spending
-    case me
-    case bank
-
-    var icon: String {
-        switch self {
-        case .friends: return "person.2"
-        case .spending: return "shield"
-        case .me: return "face.smiling"
-        case .bank: return "creditcard"
-        }
-    }
-}
+// This file has been consolidated into /Penny/Tab.swift
+// Please remove this file from the Xcode project to avoid duplicate symbol errors

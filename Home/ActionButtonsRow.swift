@@ -34,7 +34,7 @@ struct ActionButton: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 22)
                     .fill(Color.black.opacity(0.4))
-                    .backdrop(Material.ultraThinMaterial)
+                    .background(Material.ultraThinMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 22))
                     .overlay(
                         RoundedRectangle(cornerRadius: 22)
