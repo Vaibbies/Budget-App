@@ -50,20 +50,48 @@ struct BottomBar: View {
     }
 
     private var centerButton: some View {
-        ZStack {
-            Circle()
-                .fill(Color.orange.opacity(0.35))
-                .frame(width: 72, height: 72)
-                .blur(radius: 18)
+        Button {
+            // TODO: Handle Penny AI chat action
+        } label: {
+            ZStack {
+                // Outer glow
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.5),
+                                Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.2),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 20,
+                            endRadius: 45
+                        )
+                    )
+                    .frame(width: 90, height: 90)
+                    .blur(radius: 15)
 
-            Circle()
-                .fill(Color.orange)
-                .frame(width: 58, height: 58)
+                // Main button
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 1.0, green: 0.55, blue: 0.25),
+                                Color(red: 1.0, green: 0.42, blue: 0.16)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 64, height: 64)
+                    .shadow(color: Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.5), radius: 12, x: 0, y: 4)
 
-            Image(systemName: "briefcase.fill")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundColor(.white)
+                // Chat icon
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(.white)
+            }
         }
-        .offset(y: -24)
+        .offset(y: -30)
     }
 }

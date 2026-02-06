@@ -9,7 +9,7 @@ enum AppTab: CaseIterable {
     var icon: String {
         switch self {
         case .friends: return "person.2"
-        case .spending: return "briefcase.fill"
+        case .spending: return "shield"
         case .me: return "face.smiling"
         case .bank: return "creditcard"
         }
