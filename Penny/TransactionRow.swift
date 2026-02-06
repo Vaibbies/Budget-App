@@ -29,6 +29,7 @@ struct TransactionRow: View {
                     .foregroundColor(.white)
                     .font(.subheadline.weight(.semibold))
 
+                
                 Text(subtitle)
                     .foregroundColor(.white.opacity(0.5))
                     .font(.caption)
