@@ -4,28 +4,52 @@ struct BottomBar: View {
     @Binding var selectedTab: AppTab
 
     var body: some View {
-        HStack {
-            barItem(icon: "person.2", title: "Friends", tab: .friends)
-            barItem(icon: "shield", title: "Spending", tab: .spending)
-
-            Spacer(minLength: 0)
-
+        ZStack {
+            // Liquid glass bar background
+            HStack(spacing: 0) {
+                barItem(icon: "person.2", title: "Friends", tab: .friends)
+                barItem(icon: "shield", title: "Spending", tab: .spending)
+                
+                // Spacer for center button
+                Spacer()
+                    .frame(width: 80)
+                
+                barItem(icon: "creditcard", title: "Bank", tab: .bank) // Moved 'Bank' tab here
+                barItem(icon: "face.smiling", title: "Me", tab: .me) // Moved 'Me' tab here
+            }
+            .frame(height: 60)
+            .background(
+                ZStack {
+                    // Liquid glass effect
+                    RoundedRectangle(cornerRadius: 30)
+                        .fill(Color.black.opacity(0.3))
+                        .background(
+                            RoundedRectangle(cornerRadius: 30)
+                                .fill(Material.ultraThinMaterial)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 30)
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.2),
+                                            Color.white.opacity(0.05)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                        .shadow(color: .black.opacity(0.5), radius: 20, x: 0, y: 10)
+                }
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 2) // Reduced bottom padding to move closer to the bottom
+            
+            // Giant center button (bigger than the bar)
             centerButton
-
-            Spacer(minLength: 0)
-
-            barItem(icon: "face.smiling", title: "Me", tab: .me)
-            barItem(icon: "creditcard", title: "Bank", tab: .bank)
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 28)
-        .padding(.top, 16)
-        .background(
-            Capsule()
-                .fill(Color.black.opacity(0.9))
-                .blur(radius: 0.5)
-        )
-        .padding(.horizontal, 20)
     }
 
     // MARK: - Items
@@ -34,18 +58,21 @@ struct BottomBar: View {
         Button {
             selectedTab = tab
         } label: {
-            VStack(spacing: 6) {
+            VStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 22))
+                    .font(.system(size: 20, weight: .medium))
                     .foregroundColor(
-                        selectedTab == tab ? .white : .white.opacity(0.5)
+                        selectedTab == tab ? Color(red: 1.0, green: 0.42, blue: 0.16) : .white.opacity(0.6)
                     )
 
                 Text(title)
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.5))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(
+                        selectedTab == tab ? Color(red: 1.0, green: 0.42, blue: 0.16) : .white.opacity(0.5)
+                    )
             }
             .frame(maxWidth: .infinity)
+            .frame(height: 60)
         }
     }
 
@@ -54,44 +81,77 @@ struct BottomBar: View {
             // TODO: Handle Penny AI chat action
         } label: {
             ZStack {
-                // Outer glow
+                // Adjusted outer glow size
                 Circle()
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.5),
-                                Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.2),
+                                Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.6),
+                                Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.3),
+                                Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.1),
                                 Color.clear
                             ],
                             center: .center,
-                            startRadius: 20,
-                            endRadius: 45
+                            startRadius: 30,
+                            endRadius: 60 // Reduced by 10px
                         )
                     )
-                    .frame(width: 90, height: 90)
-                    .blur(radius: 15)
+                    .frame(width: 120, height: 120) // Reduced by 20px
+                    .blur(radius: 20)
 
-                // Main button
+                // Adjusted liquid glass ring size
+                Circle()
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 1.0, green: 0.6, blue: 0.35).opacity(0.8),
+                                Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.4)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 2
+                    )
+                    .frame(width: 66, height: 66) // Reduced by 20px
+                    .blur(radius: 0.5)
+
+                // Adjusted main button size
                 Circle()
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 1.0, green: 0.55, blue: 0.25),
-                                Color(red: 1.0, green: 0.42, blue: 0.16)
+                                Color(red: 1.0, green: 0.6, blue: 0.3),
+                                Color(red: 1.0, green: 0.45, blue: 0.18),
+                                Color(red: 1.0, green: 0.38, blue: 0.14)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 64, height: 64)
-                    .shadow(color: Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.5), radius: 12, x: 0, y: 4)
+                    .frame(width: 60, height: 60) // Reduced by 20px
+                    .overlay(
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.3),
+                                        Color.white.opacity(0.0)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .center
+                                )
+                            )
+                    )
+                    .shadow(color: Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.6), radius: 16, x: 0, y: 6)
+                    .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 8)
 
                 // Chat icon
                 Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 28, weight: .semibold))
+                    .font(.system(size: 28, weight: .semibold)) // Reduced icon size
                     .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
             }
         }
-        .offset(y: -30)
+        .offset(y: -30) // Adjusted offset
     }
 }
