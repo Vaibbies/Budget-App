@@ -1,9 +1,4 @@
-//
-//  PennyUITests.swift
-//  PennyUITests
-//
-//  Created by Vaibhav Jasti on 2/3/26.
-//
+
 
 import XCTest
 

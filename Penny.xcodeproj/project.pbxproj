@@ -75,6 +75,8 @@
 		C23B6FF62F32A78D00E3B155 = {
 			isa = PBXGroup;
 			children = (
+				C2D9192B2F34109900B98020 /* Navigation */,
+				C2D9191C2F33F4E700B98020 /* Home */,
 				C23B70012F32A78D00E3B155 /* Penny */,
 				C23B700F2F32A78E00E3B155 /* PennyTests */,
 				C23B70192F32A78E00E3B155 /* PennyUITests */,
@@ -90,6 +92,20 @@
 				C23B70162F32A78E00E3B155 /* PennyUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C2D9191C2F33F4E700B98020 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		C2D9192B2F34109900B98020 /* Navigation */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Navigation;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

@@ -1,21 +1,15 @@
-//
-//  ContentView.swift
-//  Penny
-//
-//  Created by Vaibhav Jasti on 2/3/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @State private var selectedTab: AppTab = .spending
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        ZStack(alignment: .bottom) {
+            HomeView()
+
+            BottomBar(selectedTab: $selectedTab)
         }
-        .padding()
+        .background(Color.black)
     }
 }
 
