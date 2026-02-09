@@ -42,7 +42,7 @@ struct TransactionDetailHeader: View {
                             .fill(Color(red: 0.07, green: 0.07, blue: 0.09).opacity(0.7))
                             .overlay(
                                 Circle()
-                   q                 .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
                             )
                     )
             }
