@@ -1,46 +1,52 @@
 import SwiftUI
 
 struct TransactionsCard: View {
+    private var data = TransactionData.shared
+    @State private var showTransactions = false
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-
-            // Header
-            HStack {
-                Text("TRANSACTIONS")
-                    .font(.caption)
-                    .tracking(2)
-                    .foregroundColor(.white.opacity(0.6))
-
-                Spacer()
-
-                Text("Impulse toggle")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.4))
+            
+            // Header — tappable to open full Transactions view
+            Button {
+                showTransactions = true
+            } label: {
+                HStack {
+                    Text("TRANSACTIONS")
+                        .font(.caption)
+                        .tracking(2)
+                        .foregroundColor(.white.opacity(0.6))
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.3))
+                    
+                    Spacer()
+                    
+                    Text("Impulse toggle")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.4))
+                }
             }
-
-            // Transactions list
+            
+            // Transactions list — latest 3 from shared data
             VStack(spacing: 0) {
-                TransactionRow(
-                    icon: "cup.and.saucer.fill",
-                    title: "Blue Bottle",
-                    subtitle: "Coffee & Pastry",
-                    amount: "-$12.50",
-                    highlight: false,
-                    isOn: false
-                )
-
-                Divider()
-                    .background(Color.white.opacity(0.08))
-                    .padding(.horizontal, 16)
-
-                TransactionRow(
-                    icon: "gamecontroller.fill",
-                    title: "Steam Store",
-                    subtitle: "Entertainment",
-                    amount: "-$59.99",
-                    highlight: true,
-                    isOn: true
-                )
+                ForEach(Array(data.recentTransactions.enumerated()), id: \.element.id) { index, transaction in
+                    TransactionRow(
+                        icon: transaction.icon,
+                        title: transaction.title,
+                        subtitle: transaction.subtitle,
+                        amount: transaction.amount,
+                        highlight: transaction.isImpulse,
+                        isOn: transaction.isImpulse
+                    )
+                    
+                    if index < data.recentTransactions.count - 1 {
+                        Divider()
+                            .background(Color.white.opacity(0.08))
+                            .padding(.horizontal, 16)
+                    }
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 20)
@@ -53,6 +59,9 @@ struct TransactionsCard: View {
                 .fill(Color(red: 0.08, green: 0.06, blue: 0.05).opacity(0.6))
         )
         .padding(.horizontal, 20)
+        .fullScreenCover(isPresented: $showTransactions) {
+            TransactionsView()
+        }
     }
 }
 
@@ -63,39 +72,36 @@ struct TransactionRow: View {
     let amount: String
     let highlight: Bool
     @State var isOn: Bool
-
+    
     var body: some View {
         HStack(spacing: 14) {
-
-            // Icon
+            
             ZStack {
                 Circle()
                     .fill(Color.white.opacity(0.08))
                     .frame(width: 42, height: 42)
-
+                
                 Image(systemName: icon)
                     .foregroundColor(.white.opacity(0.8))
             }
-
-            // Labels
+            
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .foregroundColor(.white)
                     .font(.subheadline.weight(.semibold))
-
+                
                 Text(subtitle)
                     .foregroundColor(.white.opacity(0.5))
                     .font(.caption)
             }
-
+            
             Spacer()
-
-            // Amount + toggle
+            
             VStack(alignment: .trailing, spacing: 6) {
                 Text(amount)
                     .foregroundColor(highlight ? .orange : .white)
                     .font(.subheadline.weight(.semibold))
-
+                
                 Toggle("", isOn: $isOn)
                     .labelsHidden()
                     .toggleStyle(SwitchToggleStyle(tint: .orange))

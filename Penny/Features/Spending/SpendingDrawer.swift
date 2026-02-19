@@ -3,7 +3,7 @@ import SwiftUI
 struct SpendingDrawer: View {
     @Binding var isOpen: Bool
     @State private var showAnalytics = false
-    @State private var showActivity = false
+    @State private var showTransactions = false
 
     var body: some View {
         ZStack {
@@ -33,9 +33,9 @@ struct SpendingDrawer: View {
 
                         PopupMenuItem(
                             icon: "list.bullet.rectangle",
-                            title: "Activity"
+                            title: "Transactions"
                         ) {
-                            showActivity = true
+                            showTransactions = true
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 isOpen = false
                             }
@@ -62,7 +62,6 @@ struct SpendingDrawer: View {
                                 .fill(Color.white.opacity(0.6))
                         )
                         .overlay(
-                            // Specular highlight
                             LinearGradient(
                                 colors: [
                                     Color.white.opacity(0.6),
@@ -77,7 +76,6 @@ struct SpendingDrawer: View {
                             )
                         )
                         .overlay(
-                            // Inner glass stroke
                             RoundedRectangle(cornerRadius: 22, style: .continuous)
                                 .stroke(
                                     LinearGradient(
@@ -105,8 +103,8 @@ struct SpendingDrawer: View {
         .fullScreenCover(isPresented: $showAnalytics) {
             SpendingAnalyticsView()
         }
-        .fullScreenCover(isPresented: $showActivity) {
-            TransactionDetailView()
+        .fullScreenCover(isPresented: $showTransactions) {
+            TransactionsView()
         }
     }
 }
