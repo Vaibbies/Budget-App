@@ -12,10 +12,20 @@ struct MeView: View {
     ]
 
     private let achievements = [
-        MeAchievement(emoji: "🏔️", name: "Peak Saver", date: "Unlocked Oct 12", unlocked: true,
-                       gradientColors: [Color.orange, Color(red: 1.0, green: 0.55, blue: 0.0)]),
-        MeAchievement(emoji: "💎", name: "Diamond Hands", date: "Unlocked Sep 28", unlocked: true,
-                       gradientColors: [Color.cyan, Color.blue]),
+        MeAchievement(
+            emoji: "🏔️",
+            name: "Peak Saver",
+            date: "Unlocked Oct 12",
+            unlocked: true,
+            gradientColors: [Color.orange, Color(red: 1.0, green: 0.55, blue: 0.0)]
+        ),
+        MeAchievement(
+            emoji: "💎",
+            name: "Diamond Hands",
+            date: "Unlocked Sep 28",
+            unlocked: true,
+            gradientColors: [Color.cyan, Color.blue]
+        ),
         MeAchievement(emoji: "🚀", name: "To The Moon", date: "Save $1,000", unlocked: false),
         MeAchievement(emoji: "🧘", name: "Zen Master", date: "30 Day Streak", unlocked: false),
     ]
@@ -25,16 +35,23 @@ struct MeView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
                     headerSection
+
                     MeProfileHeader()
+
                     MeStatsGrid(stats: stats)
                     MeInsightCard()
+
                     MeMenuGroup(items: menuItems1, onTap: handleMenuTap1)
                         .padding(.bottom, 24)
+
                     MeAchievementsSection(achievements: achievements)
+
                     MeMenuGroup(items: menuItems2, onTap: handleMenuTap2)
                         .padding(.bottom, 16)
+
                     MeMenuGroup(items: menuItems3, onTap: { _ in })
                         .padding(.bottom, 24)
+
                     MeFooter()
                 }
                 .padding(.horizontal, 20)

@@ -4,6 +4,10 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
+    // Persisted values (used by Me page too)
+    @AppStorage("penny.profile.name") private var storedName: String = "Alex Rivers"
+    @AppStorage("penny.profile.email") private var storedEmail: String = "alex.r@protonmail.com"
+
     @State private var profile = SettingsProfile(
         name: "Alex Rivers",
         email: "alex.r@protonmail.com",
@@ -24,6 +28,17 @@ struct SettingsView: View {
         tips: "Paused"
     )
 
+    // Editing
+    @State private var showProfileEditor = false
+    @State private var draftName = ""
+    @State private var draftEmail = ""
+
+    @FocusState private var focusedField: Field?
+
+    private enum Field {
+        case name, email
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
@@ -33,12 +48,27 @@ struct SettingsView: View {
                 sectionLabel("Account & Security")
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    gridCell(label: "Profile", value: profile.name)
-                    gridCell(label: "Two-Factor", value: profile.twoFactorEnabled ? "Active" : "Inactive",
-                             valueColor: MeTheme.success)
+                    tappableGridCell(
+                        label: "Profile",
+                        value: profile.name
+                    ) {
+                        openEditor(focus: .name)
+                    }
+
+                    gridCell(
+                        label: "Two-Factor",
+                        value: profile.twoFactorEnabled ? "Active" : "Inactive",
+                        valueColor: MeTheme.success
+                    )
                 }
-                gridCell(label: "Linked Email", value: profile.email)
-                    .padding(.top, 12)
+
+                tappableGridCell(
+                    label: "Linked Email",
+                    value: profile.email
+                ) {
+                    openEditor(focus: .email)
+                }
+                .padding(.top, 12)
 
                 divider
 
@@ -74,6 +104,15 @@ struct SettingsView: View {
         }
         .background(backgroundGradient)
         .navigationBarHidden(true)
+        .onAppear {
+            profile.name = storedName
+            profile.email = storedEmail
+        }
+        .sheet(isPresented: $showProfileEditor) {
+            profileEditorSheet
+                .presentationCornerRadius(26)
+                .presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: - Header
@@ -98,12 +137,35 @@ struct SettingsView: View {
 
             Spacer()
 
-            Button("Save") {}
+            Button("Save") { saveProfile() }
                 .font(.system(size: 13, weight: .bold))
                 .foregroundColor(MeTheme.accent)
         }
         .padding(.top, 8)
         .padding(.bottom, 24)
+    }
+
+    // MARK: - FIXED TAPPABLE CELL
+    private func tappableGridCell(
+        label: String,
+        value: String,
+        valueColor: Color = .white,
+        hasAccent: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            Haptics.light()
+            action()
+        } label: {
+            gridCell(label: label, value: value, valueColor: valueColor, hasAccent: hasAccent)
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.35))
+                        .padding(12)
+                }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Grid Cell
@@ -123,6 +185,8 @@ struct SettingsView: View {
             Text(value)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -143,7 +207,122 @@ struct SettingsView: View {
         .opacity(isDisabled ? 0.4 : 1.0)
     }
 
-    // MARK: - Section Label
+    // MARK: - Editor Sheet
+    private var profileEditorSheet: some View {
+        ZStack {
+            MeTheme.canvas.ignoresSafeArea()
+
+            VStack(spacing: 16) {
+
+                HStack {
+                    Text("Edit Profile")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button("Done") { saveFromSheet() }
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MeTheme.accent)
+                }
+                .padding(.top, 8)
+
+                VStack(spacing: 12) {
+                    fieldCard(title: "Name", text: $draftName, keyboard: .default)
+                        .focused($focusedField, equals: .name)
+
+                    fieldCard(title: "Email", text: $draftEmail, keyboard: .emailAddress)
+                        .focused($focusedField, equals: .email)
+                }
+
+                Spacer(minLength: 0)
+
+                Button { saveFromSheet() } label: {
+                    Text("Save")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 1.0, green: 0.55, blue: 0.36),
+                                            Color(red: 1.0, green: 0.42, blue: 0.16)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                        )
+                }
+                .padding(.bottom, 12)
+            }
+            .padding(20)
+        }
+        .onAppear {
+            draftName = profile.name
+            draftEmail = profile.email
+        }
+    }
+
+    private func fieldCard(title: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white.opacity(0.4))
+                .tracking(2)
+
+            TextField(title, text: text)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(title == "Email" ? .never : .words)
+                .autocorrectionDisabled(title == "Email")
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Color.white.opacity(0.05))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+        }
+        .padding(16)
+        .background(MeTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(MeTheme.glassBorder, lineWidth: 1)
+        )
+    }
+
+    private func openEditor(focus: Field) {
+        draftName = profile.name
+        draftEmail = profile.email
+        showProfileEditor = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            focusedField = focus
+        }
+    }
+
+    private func saveFromSheet() {
+        profile.name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.email = draftEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        saveProfile()
+        showProfileEditor = false
+    }
+
+    private func saveProfile() {
+        storedName = profile.name.isEmpty ? "Alex Rivers" : profile.name
+        storedEmail = profile.email.isEmpty ? "alex.r@protonmail.com" : profile.email
+
+        Haptics.medium()
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     private func sectionLabel(_ text: String) -> some View {
         HStack {
             Text(text.uppercased())
@@ -156,7 +335,6 @@ struct SettingsView: View {
         .padding(.bottom, 12)
     }
 
-    // MARK: - Divider
     private var divider: some View {
         LinearGradient(
             colors: [.clear, .white.opacity(0.08), .clear],
@@ -167,7 +345,6 @@ struct SettingsView: View {
         .padding(.vertical, 24)
     }
 
-    // MARK: - System Info Card
     private var systemInfoCard: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle")
@@ -196,7 +373,6 @@ struct SettingsView: View {
         )
     }
 
-    // MARK: - Background
     private var backgroundGradient: some View {
         ZStack {
             MeTheme.canvas.ignoresSafeArea()

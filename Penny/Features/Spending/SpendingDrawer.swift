@@ -4,10 +4,10 @@ struct SpendingDrawer: View {
     @Binding var isOpen: Bool
     @State private var showAnalytics = false
     @State private var showTransactions = false
+    @State private var showRecurring = false
 
     var body: some View {
         ZStack {
-            // Tap outside to dismiss
             if isOpen {
                 Color.clear
                     .ignoresSafeArea()
@@ -20,7 +20,8 @@ struct SpendingDrawer: View {
 
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
-                        GridMenuItem(icon: "clock.fill", title: "Recents") {
+                        GridMenuItem(icon: "repeat", title: "Recurring") {
+                            showRecurring = true
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 isOpen = false
                             }
@@ -87,6 +88,11 @@ struct SpendingDrawer: View {
                 )
                 .zIndex(100)
             }
+        }
+        .sheet(isPresented: $showRecurring) {
+            RecurringView()
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showAnalytics) { SpendingAnalyticsView() }
         .fullScreenCover(isPresented: $showTransactions) { TransactionsView() }

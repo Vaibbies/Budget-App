@@ -2,6 +2,18 @@ import SwiftUI
 
 // MARK: - Profile Header
 struct MeProfileHeader: View {
+    // ✅ MUST match SettingsView keys
+    @AppStorage("penny.profile.name") private var storedName: String = "Alex Rivers"
+    @AppStorage("penny.profile.email") private var storedEmail: String = "alex.r@protonmail.com"
+
+    private var handle: String {
+        let base = storedName
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .filter { $0.isLetter || $0 == "_" }
+        return base.isEmpty ? "user" : base
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
@@ -18,7 +30,7 @@ struct MeProfileHeader: View {
                         )
                     )
                     .frame(width: 130, height: 130)
-                
+
                 Circle()
                     .fill(Color(red: 0.071, green: 0.071, blue: 0.078))
                     .frame(width: 112, height: 112)
@@ -34,9 +46,9 @@ struct MeProfileHeader: View {
                             .foregroundColor(.white.opacity(0.3))
                             .clipShape(Circle())
                     )
-                
+
                 Button {
-                    // edit photo
+                    // edit photo (later)
                 } label: {
                     Circle()
                         .fill(Color(red: 0.1, green: 0.1, blue: 0.1))
@@ -53,16 +65,22 @@ struct MeProfileHeader: View {
                 }
                 .offset(x: 40, y: 40)
             }
-            
-            Text("Alex Morgan")
+
+            Text(storedName)
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundColor(.white.opacity(0.9))
                 .padding(.top, 16)
-            
-            Text("@alexm_organ")
+
+            Text("@\(handle)")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white.opacity(0.5))
                 .padding(.top, 4)
+
+            // Optional: show email (keep commented if you don’t want it)
+            // Text(storedEmail)
+            //     .font(.system(size: 12, weight: .medium))
+            //     .foregroundColor(.white.opacity(0.35))
+            //     .padding(.top, 6)
         }
         .padding(.bottom, 28)
     }
@@ -71,7 +89,7 @@ struct MeProfileHeader: View {
 // MARK: - Stats Grid
 struct MeStatsGrid: View {
     let stats: [MeStatItem]
-    
+
     var body: some View {
         HStack(spacing: 12) {
             ForEach(stats) { stat in
@@ -79,11 +97,11 @@ struct MeStatsGrid: View {
                     Text(stat.emoji)
                         .font(.system(size: 24))
                         .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                    
+
                     Text(stat.value)
                         .font(.system(size: 20, weight: .semibold, design: .serif))
                         .foregroundColor(.white)
-                    
+
                     Text(stat.label.uppercased())
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.white.opacity(0.4))
@@ -122,13 +140,13 @@ struct MeInsightCard: View {
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
                 )
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("PENNY INSIGHT")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(MeTheme.accent)
                     .tracking(1.5)
-                
+
                 (Text("You've curbed your coffee spending by ")
                     .foregroundColor(.white.opacity(0.8))
                  + Text("18%")
@@ -165,13 +183,13 @@ struct MeInsightCard: View {
 // MARK: - Menu Group
 struct MeMenuGroup: View {
     let items: [MeMenuItem]
-    var onTap: ((MeMenuItem) -> Void) = { _ in }  // ← added
+    var onTap: ((MeMenuItem) -> Void) = { _ in }
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 Button {
-                    onTap(item)  // ← changed
+                    onTap(item)
                 } label: {
                     HStack(spacing: 14) {
                         Circle()
@@ -182,13 +200,13 @@ struct MeMenuGroup: View {
                                     .font(.system(size: 14, weight: .medium))
                                     .foregroundColor(.white.opacity(0.7))
                             )
-                        
+
                         Text(item.label)
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white.opacity(0.9))
-                        
+
                         Spacer()
-                        
+
                         if let badge = item.badge {
                             Text(badge)
                                 .font(.system(size: 10, weight: .bold))
@@ -204,7 +222,7 @@ struct MeMenuGroup: View {
                                         )
                                 )
                         }
-                        
+
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.2))
@@ -213,7 +231,7 @@ struct MeMenuGroup: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                
+
                 if index < items.count - 1 {
                     Divider()
                         .background(Color.white.opacity(0.05))
@@ -233,7 +251,7 @@ struct MeMenuGroup: View {
 // MARK: - Achievements Section
 struct MeAchievementsSection: View {
     let achievements: [MeAchievement]
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -241,9 +259,9 @@ struct MeAchievementsSection: View {
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.white.opacity(0.5))
                     .tracking(2)
-                
+
                 Spacer()
-                
+
                 Button("View All") {
                     // view all
                 }
@@ -251,7 +269,7 @@ struct MeAchievementsSection: View {
                 .foregroundColor(MeTheme.accent)
             }
             .padding(.horizontal, 4)
-            
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(achievements) { achievement in
@@ -262,7 +280,7 @@ struct MeAchievementsSection: View {
         }
         .padding(.bottom, 24)
     }
-    
+
     private func achievementCard(_ achievement: MeAchievement) -> some View {
         VStack(spacing: 12) {
             ZStack {
@@ -298,12 +316,12 @@ struct MeAchievementsSection: View {
                         )
                 }
             }
-            
+
             VStack(spacing: 2) {
                 Text(achievement.name)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.white)
-                
+
                 Text(achievement.date)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(.white.opacity(0.4))
@@ -317,9 +335,7 @@ struct MeAchievementsSection: View {
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(
-                    achievement.unlocked
-                        ? MeTheme.glassBorder
-                        : Color.white.opacity(0.1),
+                    achievement.unlocked ? MeTheme.glassBorder : Color.white.opacity(0.1),
                     style: achievement.unlocked
                         ? StrokeStyle(lineWidth: 1)
                         : StrokeStyle(lineWidth: 1, dash: [6, 4])
@@ -343,7 +359,7 @@ struct MeFooter: View {
                 Capsule()
                     .stroke(Color.clear, lineWidth: 1)
             )
-            
+
             Text("VERSION 1.0.0")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.white.opacity(0.2))
