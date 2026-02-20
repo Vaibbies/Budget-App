@@ -40,7 +40,7 @@ struct SpendingAnalyticsView: View {
                             transactionCount: data.transactionCount
                         )
 
-                        TopCategoriesSection(categories: data.topCategories)
+                        TopCategoriesSection(categories: data.categoryTotals)
 
                         StatsRowSection(
                             totalSpent: data.totalSpent,
