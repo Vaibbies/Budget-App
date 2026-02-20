@@ -4,7 +4,7 @@ struct PennyChatView: View {
     @Environment(\.dismiss) var dismiss
     @Binding var selectedTab: Int
     @Binding var showChat: Bool
-    
+
     @State private var messages: [ChatMessage] = [
         ChatMessage(
             type: .ai,
@@ -20,10 +20,10 @@ struct PennyChatView: View {
             showTip: true
         )
     ]
-    
+
     @State private var inputText = ""
     @State private var isTyping = true
-    
+
     var body: some View {
         ZStack {
             // Background
@@ -37,7 +37,7 @@ struct PennyChatView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                
+
                 RadialGradient(
                     colors: [
                         Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.45),
@@ -51,21 +51,20 @@ struct PennyChatView: View {
                 )
             }
             .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 ChatHeader(dismiss: dismiss)
-                
-                // Messages
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         ForEach(messages.indices, id: \.self) { index in
                             if messages[index].type == .ai {
                                 HStack(alignment: .top, spacing: 12) {
                                     PennyAvatar()
-                                    
+
                                     VStack(alignment: .leading, spacing: 12) {
                                         ChatBubbleAI(content: messages[index].content)
-                                        
+
                                         if messages[index].showTip {
                                             SpendingTipCard()
                                         }
@@ -79,22 +78,21 @@ struct PennyChatView: View {
                                 }
                             }
                         }
-                        
+
                         if isTyping {
                             HStack(alignment: .top, spacing: 12) {
                                 PennyAvatar()
                                 ChatBubbleAI(content: "", isTyping: true)
                             }
                         }
-                        
+
                         Color.clear.frame(height: 100)
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 16)
                 }
                 .scrollIndicators(.hidden)
-                
-                // Input area
+
                 VStack(spacing: 16) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -110,7 +108,7 @@ struct PennyChatView: View {
                         }
                         .padding(.horizontal, 24)
                     }
-                    
+
                     HStack {
                         TextField("Ask Penny anything...", text: $inputText)
                             .foregroundColor(.white)
@@ -146,20 +144,9 @@ struct PennyChatView: View {
                 }
                 .padding(.bottom, 100)
             }
-            
-            VStack {
-                Spacer()
-                TabBarView(selectedTab: $selectedTab, showChat: $showChat)
-            }
-            .ignoresSafeArea(edges: .bottom)
-            .onChange(of: selectedTab) { oldValue, newValue in
-                if oldValue != newValue {
-                    showChat = false
-                }
-            }
         }
     }
-    
+
     func sendMessage() {
         if !inputText.isEmpty {
             messages.append(ChatMessage(type: .user, content: inputText))
