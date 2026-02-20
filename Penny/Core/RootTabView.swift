@@ -28,10 +28,9 @@ struct RootTabView: View {
             .tint(Color(red: 1.0, green: 0.42, blue: 0.16))
             .preferredColorScheme(.dark)
             .onChange(of: selectedTab) { _, newValue in
-                if newValue != 4 { Haptics.medium() }
+                Haptics.medium()
             }
 
-            // Mindful pause overlay — shown when Action Button fires the intent
             if showMindfulPause {
                 MindfulSpendingView(isPresented: $showMindfulPause)
                     .zIndex(999)
@@ -39,7 +38,6 @@ struct RootTabView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showMindfulPause)
-        // Listen for the intent notification
         .onReceive(NotificationCenter.default.publisher(for: .triggerMindfulSpending)) { _ in
             Haptics.medium()
             showMindfulPause = true
