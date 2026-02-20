@@ -30,6 +30,24 @@ struct RecurringView: View {
         subscriptions.reduce(0) { $0 + $1.price }
     }
 
+    var previousMonthTotal: Double {
+        monthlyTotal * 0.88
+    }
+
+    var monthOverMonthChange: Double {
+        guard previousMonthTotal > 0 else { return 0 }
+        return ((monthlyTotal - previousMonthTotal) / previousMonthTotal) * 100
+    }
+
+    var isSpendingDown: Bool {
+        monthlyTotal <= previousMonthTotal
+    }
+
+    var weeklyTotals: [Double] {
+        let weekly = monthlyTotal / 4
+        return [weekly * 0.82, weekly * 0.95, weekly * 1.05, weekly * 1.18]
+    }
+
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
     var body: some View {
@@ -149,28 +167,43 @@ struct RecurringView: View {
                 Spacer()
 
                 HStack(spacing: 4) {
-                    Image(systemName: "arrow.down.right")
+                    Image(systemName: isSpendingDown ? "arrow.down.right" : "arrow.up.right")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(red: 0.2, green: 0.85, blue: 0.4))
-                    Text("12%")
+                        .foregroundColor(isSpendingDown
+                            ? Color(red: 0.2, green: 0.85, blue: 0.4)
+                            : Color(red: 1.0, green: 0.42, blue: 0.16))
+                    Text("\(String(format: "%.0f", abs(monthOverMonthChange)))%")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color(red: 0.2, green: 0.85, blue: 0.4))
+                        .foregroundColor(isSpendingDown
+                            ? Color(red: 0.2, green: 0.85, blue: 0.4)
+                            : Color(red: 1.0, green: 0.42, blue: 0.16))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
                     Capsule()
-                        .fill(Color(red: 0.2, green: 0.85, blue: 0.4).opacity(0.1))
-                        .overlay(Capsule().stroke(Color(red: 0.2, green: 0.85, blue: 0.4).opacity(0.2), lineWidth: 1))
+                        .fill((isSpendingDown
+                            ? Color(red: 0.2, green: 0.85, blue: 0.4)
+                            : Color(red: 1.0, green: 0.42, blue: 0.16)).opacity(0.1))
+                        .overlay(Capsule().stroke((isSpendingDown
+                            ? Color(red: 0.2, green: 0.85, blue: 0.4)
+                            : Color(red: 1.0, green: 0.42, blue: 0.16)).opacity(0.2), lineWidth: 1))
                 )
             }
             .padding(.bottom, 24)
 
+            // Real weekly bars
+            let maxWeekly = weeklyTotals.max() ?? 1
+            let weekLabels = ["WK 1", "WK 2", "WK 3", "WK 4"]
+
             HStack(alignment: .bottom, spacing: 8) {
-                ChartBarView(heightFraction: 0.40, month: "JAN", isActive: false)
-                ChartBarView(heightFraction: 0.65, month: "FEB", isActive: false)
-                ChartBarView(heightFraction: 0.55, month: "MAR", isActive: false)
-                ChartBarView(heightFraction: 0.90, month: "APR", isActive: true)
+                ForEach(Array(weeklyTotals.enumerated()), id: \.offset) { index, total in
+                    ChartBarView(
+                        heightFraction: CGFloat(total / maxWeekly),
+                        month: weekLabels[index],
+                        isActive: index == weeklyTotals.count - 1
+                    )
+                }
             }
             .frame(height: 100)
         }

@@ -23,7 +23,6 @@ struct AddTransactionView: View {
 
     var body: some View {
         ZStack {
-            // Background
             ZStack {
                 Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
                 RadialGradient(
@@ -39,7 +38,6 @@ struct AddTransactionView: View {
                 .ignoresSafeArea()
             }
 
-            // Tap outside to dismiss keyboard
             Color.clear
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
@@ -97,7 +95,6 @@ struct AddTransactionView: View {
                             .minimumScaleFactor(0.5)
                     }
 
-                    // ✅ replace SwiftUI TextField with UIKit-backed field
                     NoMoveTextField(placeholder: "MERCHANT NAME", text: $merchantName)
                         .frame(height: 30)
                 }
@@ -229,13 +226,25 @@ struct AddTransactionView: View {
 
     private func logExpense() {
         Haptics.medium()
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        let timeString = formatter.string(from: selectedDate)
 
-        let dayLabel = Calendar.current.isDateInToday(selectedDate) ? "Today" :
-                       Calendar.current.isDateInYesterday(selectedDate) ? "Yesterday" :
-                       selectedDate.formatted(.dateTime.weekday(.wide))
+        // Time string — real time if today, neutral label for past dates
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "h:mm a"
+        let timeString = Calendar.current.isDateInToday(selectedDate)
+            ? timeFormatter.string(from: Date())
+            : "Added"
+
+        // Day label — unique per date so two Mondays don't merge
+        let dayLabel: String
+        if Calendar.current.isDateInToday(selectedDate) {
+            dayLabel = "Today"
+        } else if Calendar.current.isDateInYesterday(selectedDate) {
+            dayLabel = "Yesterday"
+        } else {
+            let labelFormatter = DateFormatter()
+            labelFormatter.dateFormat = "EEEE, MMM d"
+            dayLabel = labelFormatter.string(from: selectedDate)
+        }
 
         let transaction = SpendingTransaction(
             icon: selectedCategory.icon,
@@ -251,6 +260,7 @@ struct AddTransactionView: View {
         )
 
         if let index = data.groups.firstIndex(where: { $0.title == dayLabel }) {
+            // Group exists — insert at top
             var updated = data.groups[index].transactions
             updated.insert(transaction, at: 0)
             data.groups[index] = SpendingTransactionGroup(
@@ -258,9 +268,21 @@ struct AddTransactionView: View {
                 transactions: updated
             )
         } else {
+            // New group — insert in correct chronological position
+            let labelFormatter = DateFormatter()
+            labelFormatter.dateFormat = "EEEE, MMM d"
+
+            let insertIndex = data.groups.firstIndex(where: { group in
+                guard group.title != "Today" && group.title != "Yesterday" else { return false }
+                if let groupDate = labelFormatter.date(from: group.title) {
+                    return groupDate < selectedDate
+                }
+                return false
+            }) ?? data.groups.endIndex
+
             data.groups.insert(
                 SpendingTransactionGroup(title: dayLabel, transactions: [transaction]),
-                at: 0
+                at: insertIndex
             )
         }
 
@@ -349,7 +371,7 @@ struct KeypadView: View {
     }
 }
 
-// MARK: - UIKit TextField that doesn't trigger SwiftUI keyboard avoidance layout shifts
+// MARK: - UIKit TextField
 struct NoMoveTextField: UIViewRepresentable {
     let placeholder: String
     @Binding var text: String
@@ -360,17 +382,14 @@ struct NoMoveTextField: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UITextField {
         let tf = UITextField(frame: .zero)
-
         tf.placeholder = placeholder
         tf.textAlignment = .center
         tf.keyboardAppearance = .dark
         tf.autocorrectionType = .no
-        tf.autocapitalizationType = .allCharacters
+        tf.autocapitalizationType = .words
         tf.returnKeyType = .done
-
         tf.font = UIFont.systemFont(ofSize: 12, weight: .medium)
         tf.textColor = UIColor.white.withAlphaComponent(0.5)
-
         tf.attributedPlaceholder = NSAttributedString(
             string: placeholder,
             attributes: [
@@ -378,14 +397,10 @@ struct NoMoveTextField: UIViewRepresentable {
                 .kern: 2.0
             ]
         )
-
-        // key: remove the input assistant toolbar groups
         tf.inputAssistantItem.leadingBarButtonGroups = []
         tf.inputAssistantItem.trailingBarButtonGroups = []
-
         tf.delegate = context.coordinator
         tf.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
-
         return tf
     }
 
@@ -403,7 +418,16 @@ struct NoMoveTextField: UIViewRepresentable {
         }
 
         @objc func textChanged(_ tf: UITextField) {
-            text = tf.text ?? ""
+            let raw = tf.text ?? ""
+            let cleaned = raw.lowercased()
+                .split(separator: " ", omittingEmptySubsequences: false)
+                .map { part -> String in
+                    guard let first = part.first else { return String(part) }
+                    return String(first).uppercased() + part.dropFirst()
+                }
+                .joined(separator: " ")
+            if cleaned != raw { tf.text = cleaned }
+            text = cleaned
         }
 
         func textFieldShouldReturn(_ textField: UITextField) -> Bool {

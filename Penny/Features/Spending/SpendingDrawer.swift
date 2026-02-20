@@ -5,6 +5,7 @@ struct SpendingDrawer: View {
     @State private var showAnalytics = false
     @State private var showTransactions = false
     @State private var showRecurring = false
+    @State private var showTracking = false
 
     var body: some View {
         ZStack {
@@ -34,13 +35,14 @@ struct SpendingDrawer: View {
                         }
                     }
                     HStack(spacing: 8) {
-                        GridMenuItem(icon: "list.bullet.rectangle", title: "Txns") {
+                        GridMenuItem(icon: "list.bullet.rectangle", title: "Transactions") {
                             showTransactions = true
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 isOpen = false
                             }
                         }
                         GridMenuItem(icon: "chart.bar.fill", title: "Tracking") {
+                            showTracking = true
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 isOpen = false
                             }
@@ -96,6 +98,7 @@ struct SpendingDrawer: View {
         }
         .fullScreenCover(isPresented: $showAnalytics) { SpendingAnalyticsView() }
         .fullScreenCover(isPresented: $showTransactions) { TransactionsView() }
+        .fullScreenCover(isPresented: $showTracking) { TrackingView() }
     }
 }
 

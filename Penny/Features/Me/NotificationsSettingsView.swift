@@ -15,7 +15,6 @@ struct NotificationsSettingsView: View {
             VStack(spacing: 0) {
                 headerSection
 
-                // ── Alert Types ──────────────────────────────────────────
                 sectionLabel("Alert Types")
 
                 notifCard {

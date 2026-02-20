@@ -76,11 +76,7 @@ struct MeProfileHeader: View {
                 .foregroundColor(.white.opacity(0.5))
                 .padding(.top, 4)
 
-            // Optional: show email (keep commented if you don’t want it)
-            // Text(storedEmail)
-            //     .font(.system(size: 12, weight: .medium))
-            //     .foregroundColor(.white.opacity(0.35))
-            //     .padding(.top, 6)
+         
         }
         .padding(.bottom, 28)
     }
