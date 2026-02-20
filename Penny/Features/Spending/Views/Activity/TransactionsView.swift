@@ -30,8 +30,11 @@ struct TransactionsView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showAddTransaction) {
+        .sheet(isPresented: $showAddTransaction) {
             AddTransactionView()
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled(false)
         }
     }
 
@@ -39,7 +42,6 @@ struct TransactionsView: View {
     private var backgroundGradient: some View {
         ZStack {
             TransactionsTheme.canvas.ignoresSafeArea()
-
             RadialGradient(
                 colors: [
                     Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.7),
@@ -57,9 +59,7 @@ struct TransactionsView: View {
     // MARK: - Header
     private var headerSection: some View {
         HStack {
-            Button {
-                dismiss()
-            } label: {
+            Button { dismiss() } label: {
                 Circle()
                     .fill(TransactionsTheme.surface)
                     .frame(width: 40, height: 40)
@@ -80,7 +80,6 @@ struct TransactionsView: View {
 
             Spacer()
 
-            // Orange + button
             Button {
                 showAddTransaction = true
                 Haptics.medium()
@@ -121,7 +120,7 @@ struct TransactionsView: View {
     // MARK: - Transactions List
     private var transactionsList: some View {
         VStack(spacing: 24) {
-            ForEach(data.groups) { group in
+            ForEach(Array(data.groups.enumerated()), id: \.element.id) { groupIndex, group in
                 VStack(alignment: .leading, spacing: 12) {
                     Text(group.title.uppercased())
                         .font(.system(size: 10, weight: .bold))
@@ -130,13 +129,33 @@ struct TransactionsView: View {
                         .padding(.horizontal, 24)
 
                     VStack(spacing: 10) {
-                        ForEach(group.transactions) { transaction in
-                            fullTransactionRow(transaction)
+                        ForEach(Array(group.transactions.enumerated()), id: \.element.id) { txIndex, transaction in
+                            SwipeToDeleteRow(
+                                onDelete: { deleteTransaction(groupIndex: groupIndex, txIndex: txIndex) }
+                            ) {
+                                fullTransactionRow(transaction)
+                            }
                         }
                     }
                     .padding(.horizontal, 24)
                 }
             }
+        }
+    }
+
+    // MARK: - Delete Transaction
+    private func deleteTransaction(groupIndex: Int, txIndex: Int) {
+        Haptics.medium()
+        var updatedTransactions = data.groups[groupIndex].transactions
+        updatedTransactions.remove(at: txIndex)
+
+        if updatedTransactions.isEmpty {
+            data.groups.remove(at: groupIndex)
+        } else {
+            data.groups[groupIndex] = SpendingTransactionGroup(
+                title: data.groups[groupIndex].title,
+                transactions: updatedTransactions
+            )
         }
     }
 
@@ -175,6 +194,117 @@ struct TransactionsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(TransactionsTheme.line, lineWidth: 1))
         .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+    }
+}
+
+// MARK: - Swipe To Delete Row (Mail-style)
+// - Swipe a little: reveals trash button (no delete)
+// - Tap trash: deletes
+// - Full swipe past a larger threshold: deletes (like Mail)
+struct SwipeToDeleteRow<Content: View>: View {
+    let onDelete: () -> Void
+    let content: () -> Content
+
+    @State private var offset: CGFloat = 0
+    @State private var isOpen: Bool = false
+    @State private var isDeleting: Bool = false
+
+    private let actionWidth: CGFloat = 86              // width of the revealed trash area
+    private let openThreshold: CGFloat = 55            // how far you must swipe to “open”
+    private let fullSwipeDeleteThreshold: CGFloat = 180 // must swipe far to auto-delete (Mail-like)
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+
+            // Background action (only becomes visible as you drag)
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.red.opacity(backgroundOpacity))
+                .overlay(
+                    Image(systemName: "trash")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .opacity(trashOpacity)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 16))
+                .onTapGesture {
+                    // Tap to delete only when opened/revealed
+                    guard isOpen, !isDeleting else { return }
+                    triggerDelete()
+                }
+
+            // Foreground row
+            content()
+                .offset(x: offset)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 10)
+                        .onChanged { value in
+                            guard !isDeleting else { return }
+                            let dx = value.translation.width
+
+                            if dx < 0 {
+                                // swipe left: allow going well past actionWidth for “full swipe delete”
+                                offset = max(dx, -260)
+                            } else {
+                                // swipe right to close if open
+                                if isOpen {
+                                    offset = min(0, -actionWidth + dx)
+                                }
+                            }
+                        }
+                        .onEnded { value in
+                            guard !isDeleting else { return }
+                            let dx = value.translation.width
+
+                            // Full swipe delete (must be pretty far)
+                            if dx <= -fullSwipeDeleteThreshold {
+                                triggerDelete()
+                                return
+                            }
+
+                            // Otherwise decide open/close
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                                if dx <= -openThreshold {
+                                    offset = -actionWidth
+                                    isOpen = true
+                                } else {
+                                    offset = 0
+                                    isOpen = false
+                                }
+                            }
+                        }
+                )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var revealProgress: CGFloat {
+        // 0 -> 1 as you move from 0 to -actionWidth
+        let p = min(1, max(0, (-offset / actionWidth)))
+        return p
+    }
+
+    private var backgroundOpacity: Double {
+        // Prevent “everything looks red” by only showing red while actually swiping/revealed
+        Double(0.0 + 0.85 * revealProgress)
+    }
+
+    private var trashOpacity: Double {
+        Double(revealProgress)
+    }
+
+    private func triggerDelete() {
+        isDeleting = true
+        Haptics.medium()
+
+        // Animate row off-screen, then delete
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
+            offset = -500
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            onDelete()
+        }
     }
 }
 
