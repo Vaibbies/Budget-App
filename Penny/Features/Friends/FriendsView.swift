@@ -4,20 +4,20 @@ struct FriendsView: View {
     @State private var showSettleModal = false
     @State private var showAddFriendModal = false
     @State private var showMenuModal = false
-
+    
     var body: some View {
         ZStack {
             // Background - Much darker, almost black
             Color.black
                 .ignoresSafeArea()
-
+            
             VStack(spacing: 0) {
                 // Header
                 FriendsHeader(
-                    onMenuClick: { }, 
+                    onMenuClick: { showMenuModal = true },
                     onAddClick: { showAddFriendModal = true }
                 )
-
+                
                 // Content
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
@@ -28,49 +28,43 @@ struct FriendsView: View {
                         )
                         .padding(.horizontal, 24)
                         .padding(.bottom, 24)
-
+                        
                         // Pending Requests Section
                         if !FriendsData.pendingRequests.isEmpty {
                             PendingRequestsSection()
                                 .padding(.horizontal, 24)
                                 .padding(.bottom, 24)
                         }
-
+                        
                         // Shared Expenses Section
                         if !FriendsData.sharedExpenses.isEmpty {
                             SharedExpensesSection()
                                 .padding(.horizontal, 24)
                                 .padding(.bottom, 24)
                         }
-
+                        
                         // All Friends Section
                         AllFriendsSection()
                             .padding(.horizontal, 24)
-
+                        
                         // Bottom padding for tab bar
                         Color.clear.frame(height: 100)
                     }
                 }
             }
-
-            // Menu overlay stays as-is (optional)
+            
+            // Modals
+            if showSettleModal {
+                SettleUpModal(isPresented: $showSettleModal)
+            }
+            
+            if showAddFriendModal {
+                AddFriendModal(isPresented: $showAddFriendModal)
+            }
+            
             if showMenuModal {
                 MenuModal(isPresented: $showMenuModal)
             }
-        }
-        // ✅ Halfway sheet (medium) + can drag to large
-        .sheet(isPresented: $showAddFriendModal) {
-            AddFriendModal(isPresented: $showAddFriendModal)
-                .presentationCornerRadius(28)
-                .presentationDragIndicator(.visible)
-                .presentationDetents([.medium, .large], selection: .constant(.medium))
-        }
-        // ✅ Halfway sheet (medium) + can drag to large
-        .sheet(isPresented: $showSettleModal) {
-            SettleUpModal(isPresented: $showSettleModal)
-                .presentationCornerRadius(28)
-                .presentationDragIndicator(.visible)
-                .presentationDetents([.medium, .large], selection: .constant(.medium))
         }
     }
 }
@@ -78,7 +72,7 @@ struct FriendsView: View {
 // MARK: - Pending Requests Section
 struct PendingRequestsSection: View {
     let requests = FriendsData.pendingRequests
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -86,9 +80,9 @@ struct PendingRequestsSection: View {
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(2)
                     .foregroundColor(.white.opacity(0.4))
-
+                
                 Spacer()
-
+                
                 // New badge - outlined style
                 Text("\(requests.count) NEW")
                     .font(.system(size: 9, weight: .bold))
@@ -101,7 +95,7 @@ struct PendingRequestsSection: View {
                             .stroke(Color.white.opacity(0.3), lineWidth: 1.5)
                     )
             }
-
+            
             VStack(spacing: 12) {
                 ForEach(requests) { request in
                     PendingRequestCard(request: request)
@@ -115,7 +109,7 @@ struct PendingRequestsSection: View {
 struct SharedExpensesSection: View {
     let expenses = FriendsData.sharedExpenses
     let activeCount = FriendsData.sharedExpenses.filter { $0.type != .settled }.count
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -123,14 +117,14 @@ struct SharedExpensesSection: View {
                     .font(.system(size: 10, weight: .semibold))
                     .tracking(2)
                     .foregroundColor(.white.opacity(0.4))
-
+                
                 Spacer()
-
+                
                 Text("\(activeCount) Active")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.white.opacity(0.4))
             }
-
+            
             VStack(spacing: 12) {
                 ForEach(expenses) { expense in
                     SharedExpenseRow(expense: expense)
@@ -143,18 +137,18 @@ struct SharedExpensesSection: View {
 // MARK: - All Friends Section
 struct AllFriendsSection: View {
     let friends = FriendsData.allFriends
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("ALL FRIENDS")
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.4))
-
+            
             VStack(spacing: 0) {
                 ForEach(friends) { friend in
                     FriendRow(friend: friend)
-
+                    
                     if friend.id != friends.last?.id {
                         Divider()
                             .background(Color.white.opacity(0.08))

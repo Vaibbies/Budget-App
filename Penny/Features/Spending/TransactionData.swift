@@ -194,6 +194,9 @@ class TransactionData {
         ]),
     ]
 
+    // MARK: - Cache
+    private var _categoryTotals: [CategoryData]? = nil
+
     // MARK: - Computed Analytics
 
     var allTransactions: [SpendingTransaction] {
@@ -209,13 +212,16 @@ class TransactionData {
     }
 
     var categoryTotals: [CategoryData] {
+        if let cached = _categoryTotals { return cached }
         var totals: [SpendingCategory: Double] = [:]
         for t in allTransactions {
             totals[t.category, default: 0] += t.amountValue
         }
-        return totals
+        let result = totals
             .sorted { $0.value > $1.value }
             .map { CategoryData(name: $0.key.rawValue, color: $0.key.color, amount: $0.value, total: totalSpent) }
+        _categoryTotals = result
+        return result
     }
 
     var topCategories: [CategoryData] {

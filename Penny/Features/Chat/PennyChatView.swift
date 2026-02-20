@@ -53,10 +53,7 @@ struct PennyChatView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                ChatHeader(onBack: {
-                    selectedTab = 1      // Spending tab
-                    showChat = false     // hide chat overlay
-                })
+                ChatHeader(dismiss: dismiss)
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -89,14 +86,13 @@ struct PennyChatView: View {
                             }
                         }
 
-                        Color.clear.frame(height: 80)
+                        Color.clear.frame(height: 100)
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 16)
                 }
                 .scrollIndicators(.hidden)
 
-                // INPUT AREA
                 VStack(spacing: 16) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -146,10 +142,9 @@ struct PennyChatView: View {
                     }
                     .padding(.horizontal, 24)
                 }
-                .padding(.bottom, 16)
+                .padding(.bottom, 100)
             }
         }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     func sendMessage() {
