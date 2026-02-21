@@ -19,60 +19,45 @@ struct SpendingDrawer: View {
                         }
                     }
 
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        GridMenuItem(icon: "repeat", title: "Recurring") {
+                VStack(spacing: 6) {
+                    // Top row
+                    HStack(spacing: 6) {
+                        DrawerItem(icon: "repeat", title: "Recurring", color: Color(red: 1.0, green: 0.42, blue: 0.16)) {
                             showRecurring = true
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                isOpen = false
-                            }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isOpen = false }
                         }
-                        GridMenuItem(icon: "chart.pie.fill", title: "Analytics") {
+                        DrawerItem(icon: "chart.pie.fill", title: "Analytics", color: Color(red: 0.38, green: 0.65, blue: 0.98)) {
                             showAnalytics = true
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                isOpen = false
-                            }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isOpen = false }
                         }
                     }
-                    HStack(spacing: 8) {
-                        GridMenuItem(icon: "list.bullet.rectangle", title: "Transactions") {
+                    // Bottom row
+                    HStack(spacing: 6) {
+                        DrawerItem(icon: "list.bullet.rectangle", title: "Transactions", color: Color(red: 0.68, green: 0.45, blue: 0.98)) {
                             showTransactions = true
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                isOpen = false
-                            }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isOpen = false }
                         }
-                        GridMenuItem(icon: "chart.bar.fill", title: "Tracking") {
+                        DrawerItem(icon: "chart.bar.fill", title: "Tracking", color: Color(red: 0.29, green: 0.87, blue: 0.50)) {
                             showTracking = true
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                isOpen = false
-                            }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isOpen = false }
                         }
                     }
                 }
-                .padding(10)
+                .padding(8)
                 .background(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(Color(red: 0.10, green: 0.08, blue: 0.07).opacity(0.95))
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(.ultraThinMaterial)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.08),
-                                            Color.clear
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .fill(Color(red: 0.08, green: 0.06, blue: 0.05).opacity(0.85))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
                                 .stroke(
                                     LinearGradient(
                                         colors: [
-                                            Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.4),
-                                            Color.white.opacity(0.06)
+                                            Color.white.opacity(0.15),
+                                            Color.white.opacity(0.04)
                                         ],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
@@ -80,12 +65,14 @@ struct SpendingDrawer: View {
                                     lineWidth: 1
                                 )
                         )
-                        .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 16)
-                        .shadow(color: Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.1), radius: 20, x: 0, y: 8)
+                        .shadow(color: .black.opacity(0.6), radius: 40, x: 0, y: 20)
+                        .shadow(color: Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.08), radius: 30, x: 0, y: 10)
                 )
-                .position(x: 100, y: 130)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(.top, 120)
+                .padding(.trailing, 20)
                 .transition(
-                    .scale(scale: 0.9, anchor: .topLeading)
+                    .scale(scale: 0.85, anchor: .topTrailing)
                         .combined(with: .opacity)
                 )
                 .zIndex(100)
@@ -102,55 +89,57 @@ struct SpendingDrawer: View {
     }
 }
 
-// MARK: - Grid Menu Item
-struct GridMenuItem: View {
+// MARK: - Drawer Item
+struct DrawerItem: View {
     let icon: String
     let title: String
+    let color: Color
     let action: () -> Void
 
     @State private var isPressed = false
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
+        Button(action: {
+            Haptics.light()
+            action()
+        }) {
+            VStack(spacing: 10) {
                 ZStack {
-                    Circle()
-                        .fill(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.15))
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(color.opacity(0.15))
                         .overlay(
-                            Circle()
-                                .stroke(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.25), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(color.opacity(0.2), lineWidth: 1)
                         )
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
 
                     Image(systemName: icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(color)
                 }
 
                 Text(title)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(.white.opacity(0.65))
+                    .lineLimit(1)
             }
-            .frame(width: 80, height: 80)
+            .frame(width: 96, height: 88)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(isPressed ? 0.1 : 0.05))
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white.opacity(isPressed ? 0.08 : 0.04))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Color.white.opacity(isPressed ? 0.12 : 0.06), lineWidth: 1)
                     )
             )
-            .scaleEffect(isPressed ? 0.95 : 1)
+            .scaleEffect(isPressed ? 0.94 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: isPressed)
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    withAnimation(.easeOut(duration: 0.1)) { isPressed = true }
-                }
-                .onEnded { _ in
-                    withAnimation(.easeOut(duration: 0.1)) { isPressed = false }
-                }
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
         )
     }
 }
@@ -160,7 +149,6 @@ struct PopupMenuItem: View {
     let icon: String
     let title: String
     let action: () -> Void
-
     @State private var isPressed = false
 
     var body: some View {
@@ -170,16 +158,13 @@ struct PopupMenuItem: View {
                     Circle()
                         .fill(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.15))
                         .frame(width: 32, height: 32)
-
                     Image(systemName: icon)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
                 }
-
                 Text(title)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.white.opacity(0.9))
-
                 Spacer()
             }
             .padding(.vertical, 8)
@@ -193,12 +178,8 @@ struct PopupMenuItem: View {
         .buttonStyle(.plain)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    withAnimation(.easeOut(duration: 0.15)) { isPressed = true }
-                }
-                .onEnded { _ in
-                    withAnimation(.easeOut(duration: 0.15)) { isPressed = false }
-                }
+                .onChanged { _ in withAnimation(.easeOut(duration: 0.15)) { isPressed = true } }
+                .onEnded { _ in withAnimation(.easeOut(duration: 0.15)) { isPressed = false } }
         )
     }
 }

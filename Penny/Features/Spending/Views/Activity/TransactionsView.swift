@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Theme
 private enum TransactionsTheme {
@@ -15,6 +16,14 @@ struct TransactionsView: View {
     @Environment(\.dismiss) var dismiss
     private var data = TransactionData.shared
     @State private var showAddTransaction = false
+    @State private var editingInfo: EditInfo? = nil
+
+    struct EditInfo: Identifiable {
+        let id = UUID()
+        let transaction: SpendingTransaction
+        let groupIndex: Int
+        let txIndex: Int
+    }
 
     var body: some View {
         ZStack {
@@ -24,7 +33,6 @@ struct TransactionsView: View {
                 headerSection
                 spentSection
 
-                // ✅ Use List for native scrolling + native swipe actions
                 List {
                     ForEach(Array(data.groups.enumerated()), id: \.element.id) { groupIndex, group in
                         Section {
@@ -40,6 +48,18 @@ struct TransactionsView: View {
                                             Label("Delete", systemImage: "trash")
                                         }
                                     }
+                                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                        Button {
+                                            editingInfo = EditInfo(
+                                                transaction: transaction,
+                                                groupIndex: groupIndex,
+                                                txIndex: txIndex
+                                            )
+                                        } label: {
+                                            Label("Edit", systemImage: "pencil")
+                                        }
+                                        .tint(Color(red: 0.38, green: 0.65, blue: 0.98))
+                                    }
                             }
                         } header: {
                             Text(group.title.uppercased())
@@ -52,7 +72,6 @@ struct TransactionsView: View {
                         }
                     }
 
-                    // bottom breathing room so last row isn’t under nav / home indicator
                     Color.clear
                         .frame(height: 120)
                         .listRowSeparator(.hidden)
@@ -69,6 +88,15 @@ struct TransactionsView: View {
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
                 .interactiveDismissDisabled(false)
+        }
+        .sheet(item: $editingInfo) { info in
+            EditTransactionView(
+                transaction: info.transaction,
+                originalGroupIndex: info.groupIndex,
+                originalTxIndex: info.txIndex
+            )
+            .presentationCornerRadius(30)
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -99,21 +127,17 @@ struct TransactionsView: View {
                     .frame(width: 40, height: 40)
                     .overlay(Circle().stroke(TransactionsTheme.line, lineWidth: 1))
                     .overlay(
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(TransactionsTheme.ink)
                     )
             }
-
             Spacer()
-
             Text("TRANSACTIONS")
                 .font(.system(size: 12, weight: .medium))
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.5))
-
             Spacer()
-
             Button {
                 showAddTransaction = true
                 Haptics.medium()
@@ -141,7 +165,6 @@ struct TransactionsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(TransactionsTheme.muted)
                 .tracking(2)
-
             Text("$\(String(format: "%.2f", data.totalSpent))")
                 .font(.system(size: 48, weight: .regular, design: .serif))
                 .foregroundColor(.white)
@@ -151,12 +174,11 @@ struct TransactionsView: View {
         .padding(.bottom, 16)
     }
 
-    // MARK: - Delete Transaction
+    // MARK: - Delete
     private func deleteTransaction(groupIndex: Int, txIndex: Int) {
         Haptics.medium()
         var updatedTransactions = data.groups[groupIndex].transactions
         updatedTransactions.remove(at: txIndex)
-
         if updatedTransactions.isEmpty {
             data.groups.remove(at: groupIndex)
         } else {
@@ -167,7 +189,7 @@ struct TransactionsView: View {
         }
     }
 
-    // MARK: - Full Transaction Row
+    // MARK: - Row
     private func fullTransactionRow(_ transaction: SpendingTransaction) -> some View {
         HStack(spacing: 16) {
             RoundedRectangle(cornerRadius: 12)
@@ -179,29 +201,331 @@ struct TransactionsView: View {
                         .font(.system(size: 20, weight: .medium))
                         .foregroundColor(transaction.iconColor)
                 )
-
             VStack(alignment: .leading, spacing: 3) {
                 Text(transaction.title)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
-
                 Text("\(transaction.time) • \(transaction.subtitle)")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(TransactionsTheme.muted)
             }
-
             Spacer()
-
-            Text(transaction.amount)
-                .font(.system(size: 17, weight: .medium, design: .serif))
-                .foregroundColor(transaction.isImpulse ? TransactionsTheme.accent : .white)
-                .tracking(-0.5)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(transaction.amount)
+                    .font(.system(size: 17, weight: .medium, design: .serif))
+                    .foregroundColor(transaction.isImpulse ? TransactionsTheme.accent : .white)
+                    .tracking(-0.5)
+                if transaction.isImpulse {
+                    Text("impulse")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(TransactionsTheme.accent)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(TransactionsTheme.accent.opacity(0.12)))
+                }
+            }
         }
         .padding(16)
         .background(TransactionsTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(TransactionsTheme.line, lineWidth: 1))
         .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+    }
+}
+
+// MARK: - Edit Transaction View
+struct EditTransactionView: View {
+    @Environment(\.dismiss) var dismiss
+    let transaction: SpendingTransaction
+    let originalGroupIndex: Int
+    let originalTxIndex: Int
+
+    private var data = TransactionData.shared
+
+    @State private var amountString: String
+    @State private var merchantName: String
+    @State private var selectedCategory: SpendingCategory
+    @State private var selectedDate: Date
+    @State private var isImpulse: Bool
+    @State private var isListening = false
+
+    init(transaction: SpendingTransaction, originalGroupIndex: Int, originalTxIndex: Int) {
+        self.transaction = transaction
+        self.originalGroupIndex = originalGroupIndex
+        self.originalTxIndex = originalTxIndex
+        _merchantName = State(initialValue: transaction.title)
+        _amountString = State(initialValue: String(Int(transaction.amountValue * 100)))
+        _selectedCategory = State(initialValue: transaction.category)
+        _isImpulse = State(initialValue: transaction.isImpulse)
+
+        let groupTitle = TransactionData.shared.groups[originalGroupIndex].title
+        if groupTitle == "Today" {
+            _selectedDate = State(initialValue: Date())
+        } else if groupTitle == "Yesterday" {
+            _selectedDate = State(initialValue: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+        } else {
+            let fmt = DateFormatter()
+            fmt.dateFormat = "EEEE, MMM d"
+            _selectedDate = State(initialValue: fmt.date(from: groupTitle) ?? Date())
+        }
+    }
+
+    private var displayAmount: String {
+        let value = (Double(amountString) ?? 0) / 100
+        return String(format: "%.2f", value)
+    }
+
+    private var amountDouble: Double {
+        (Double(amountString) ?? 0) / 100
+    }
+
+    var body: some View {
+        ZStack {
+            ZStack {
+                Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
+                RadialGradient(
+                    colors: [
+                        Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.6),
+                        Color(red: 1.0, green: 0.376, blue: 0.125).opacity(0.1),
+                        Color.clear
+                    ],
+                    center: .init(x: 0.5, y: 0.0),
+                    startRadius: 0,
+                    endRadius: 500
+                )
+                .ignoresSafeArea()
+            }
+
+            Color.clear
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+
+            VStack(spacing: 0) {
+                HStack {
+                    Button { dismiss() } label: {
+                        Circle()
+                            .fill(Color.white.opacity(0.07))
+                            .frame(width: 40, height: 40)
+                            .overlay(Circle().stroke(Color.white.opacity(0.06), lineWidth: 1))
+                            .overlay(
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                            )
+                    }
+                    Spacer()
+                    Text("EDIT EXPENSE")
+                        .font(.system(size: 12, weight: .medium))
+                        .tracking(2)
+                        .foregroundColor(.white.opacity(0.5))
+                    Spacer()
+                    Button { isListening.toggle(); Haptics.medium() } label: {
+                        Circle()
+                            .fill(isListening
+                                  ? Color(red: 1.0, green: 0.42, blue: 0.16)
+                                  : Color.white.opacity(0.07))
+                            .frame(width: 40, height: 40)
+                            .overlay(Circle().stroke(Color.white.opacity(0.06), lineWidth: 1))
+                            .overlay(
+                                Image(systemName: isListening ? "waveform" : "mic.fill")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                            )
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+
+                VStack(spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("$")
+                            .font(.system(size: 32, weight: .light))
+                            .foregroundColor(.white.opacity(0.5))
+                        Text(displayAmount)
+                            .font(.system(size: 64, weight: .light, design: .serif))
+                            .foregroundColor(.white)
+                            .minimumScaleFactor(0.5)
+                    }
+                    NoMoveTextField(placeholder: "MERCHANT NAME", text: $merchantName)
+                        .frame(height: 30)
+                }
+                .padding(.bottom, 20)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(SpendingCategory.allCases, id: \.self) { category in
+                            CategoryChip(
+                                category: category,
+                                isSelected: selectedCategory == category
+                            ) {
+                                selectedCategory = category
+                                Haptics.light()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+                .padding(.bottom, 16)
+
+                HStack(spacing: 12) {
+                    DatePicker("", selection: $selectedDate, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .tint(Color(red: 1.0, green: 0.42, blue: 0.16))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.white.opacity(0.06))
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        )
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Text("Impulse")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                        Toggle("", isOn: $isImpulse)
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
+                            .scaleEffect(0.85)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(Color.white.opacity(0.06))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                    )
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
+
+                KeypadView { key in handleKey(key) }
+                    .padding(.horizontal, 24)
+
+                Spacer()
+
+                Button(action: saveExpense) {
+                    Text("Save Changes")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(
+                                    amountDouble > 0
+                                    ? LinearGradient(
+                                        colors: [Color(red: 1.0, green: 0.53, blue: 0.25), Color(red: 1.0, green: 0.35, blue: 0.10)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    )
+                                    : LinearGradient(
+                                        colors: [Color.white.opacity(0.08), Color.white.opacity(0.08)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                    )
+                                )
+                                .shadow(
+                                    color: amountDouble > 0 ? Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.4) : .clear,
+                                    radius: 12, y: 4
+                                )
+                        )
+                }
+                .disabled(amountDouble == 0)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 48)
+            }
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    private func handleKey(_ key: String) {
+        Haptics.light()
+        switch key {
+        case "delete":
+            if amountString.count > 1 { amountString.removeLast() } else { amountString = "0" }
+        case ".":
+            break
+        default:
+            if amountString == "0" { amountString = key }
+            else if amountString.count < 7 { amountString += key }
+        }
+    }
+
+    private func saveExpense() {
+        Haptics.medium()
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "h:mm a"
+        let timeString = Calendar.current.isDateInToday(selectedDate)
+            ? timeFormatter.string(from: Date())
+            : "Added"
+
+        let newDayLabel: String
+        if Calendar.current.isDateInToday(selectedDate) {
+            newDayLabel = "Today"
+        } else if Calendar.current.isDateInYesterday(selectedDate) {
+            newDayLabel = "Yesterday"
+        } else {
+            let fmt = DateFormatter()
+            fmt.dateFormat = "EEEE, MMM d"
+            newDayLabel = fmt.string(from: selectedDate)
+        }
+
+        let updated = SpendingTransaction(
+            id: transaction.id,
+            icon: selectedCategory.icon,
+            title: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
+            subtitle: selectedCategory.rawValue,
+            time: timeString,
+            amount: "-$\(String(format: "%.2f", amountDouble))",
+            isImpulse: isImpulse,
+            iconColor: selectedCategory.color,
+            bgColor: selectedCategory.color.opacity(0.1),
+            borderColor: selectedCategory.color.opacity(0.2),
+            category: selectedCategory
+        )
+
+        // Remove from original group
+        var originalTxns = data.groups[originalGroupIndex].transactions
+        originalTxns.remove(at: originalTxIndex)
+        if originalTxns.isEmpty {
+            data.groups.remove(at: originalGroupIndex)
+        } else {
+            data.groups[originalGroupIndex] = SpendingTransactionGroup(
+                title: data.groups[originalGroupIndex].title,
+                transactions: originalTxns
+            )
+        }
+
+        // Insert into correct group
+        if let existingIndex = data.groups.firstIndex(where: { $0.title == newDayLabel }) {
+            var txns = data.groups[existingIndex].transactions
+            txns.insert(updated, at: 0)
+            data.groups[existingIndex] = SpendingTransactionGroup(
+                title: data.groups[existingIndex].title,
+                transactions: txns
+            )
+        } else {
+            let labelFormatter = DateFormatter()
+            labelFormatter.dateFormat = "EEEE, MMM d"
+            let insertIndex = data.groups.firstIndex(where: { group in
+                guard group.title != "Today" && group.title != "Yesterday" else { return false }
+                if let groupDate = labelFormatter.date(from: group.title) {
+                    return groupDate < selectedDate
+                }
+                return false
+            }) ?? data.groups.endIndex
+            data.groups.insert(
+                SpendingTransactionGroup(title: newDayLabel, transactions: [updated]),
+                at: insertIndex
+            )
+        }
+
+        dismiss()
     }
 }
 

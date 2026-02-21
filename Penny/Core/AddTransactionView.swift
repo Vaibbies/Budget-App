@@ -94,7 +94,6 @@ struct AddTransactionView: View {
                             .foregroundColor(.white)
                             .minimumScaleFactor(0.5)
                     }
-
                     NoMoveTextField(placeholder: "MERCHANT NAME", text: $merchantName)
                         .frame(height: 30)
                 }
@@ -227,14 +226,12 @@ struct AddTransactionView: View {
     private func logExpense() {
         Haptics.medium()
 
-        // Time string — real time if today, neutral label for past dates
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "h:mm a"
         let timeString = Calendar.current.isDateInToday(selectedDate)
             ? timeFormatter.string(from: Date())
             : "Added"
 
-        // Day label — unique per date so two Mondays don't merge
         let dayLabel: String
         if Calendar.current.isDateInToday(selectedDate) {
             dayLabel = "Today"
@@ -260,7 +257,6 @@ struct AddTransactionView: View {
         )
 
         if let index = data.groups.firstIndex(where: { $0.title == dayLabel }) {
-            // Group exists — insert at top
             var updated = data.groups[index].transactions
             updated.insert(transaction, at: 0)
             data.groups[index] = SpendingTransactionGroup(
@@ -268,10 +264,8 @@ struct AddTransactionView: View {
                 transactions: updated
             )
         } else {
-            // New group — insert in correct chronological position
             let labelFormatter = DateFormatter()
             labelFormatter.dateFormat = "EEEE, MMM d"
-
             let insertIndex = data.groups.firstIndex(where: { group in
                 guard group.title != "Today" && group.title != "Yesterday" else { return false }
                 if let groupDate = labelFormatter.date(from: group.title) {
@@ -279,7 +273,6 @@ struct AddTransactionView: View {
                 }
                 return false
             }) ?? data.groups.endIndex
-
             data.groups.insert(
                 SpendingTransactionGroup(title: dayLabel, transactions: [transaction]),
                 at: insertIndex
