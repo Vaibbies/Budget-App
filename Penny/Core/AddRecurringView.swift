@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AddRecurringView: View {
     @Environment(\.dismiss) var dismiss
-    let onAdd: (RecurringSubscription) -> Void
+    private var data = TransactionData.shared
 
     @State private var name = ""
     @State private var plan = ""
@@ -30,7 +30,6 @@ struct AddRecurringView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
                 HStack {
                     Button { dismiss() } label: {
                         Circle()
@@ -92,7 +91,6 @@ struct AddRecurringView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.06), lineWidth: 1))
                         )
 
-                        // Input fields
                         VStack(spacing: 12) {
                             inputField(label: "SERVICE NAME", text: $name, placeholder: "Netflix, Spotify...")
                             inputField(label: "PLAN", text: $plan, placeholder: "Premium, Monthly...")
@@ -199,14 +197,13 @@ struct AddRecurringView: View {
                     .padding(.bottom, 32)
                 }
 
-                // Add button
                 Button {
                     guard !name.isEmpty, priceDouble > 0 else { return }
                     Haptics.medium()
                     let formatter = DateFormatter()
                     formatter.dateFormat = "MMM d"
                     let billing = formatter.string(from: nextBilling)
-                    onAdd(RecurringSubscription(
+                    let newSub = RecurringSubscription(
                         name: name,
                         plan: plan.isEmpty ? nil : plan,
                         price: priceDouble,
@@ -214,7 +211,8 @@ struct AddRecurringView: View {
                         iconColor: .white,
                         bgColor: selectedColor,
                         nextBilling: billing
-                    ))
+                    )
+                    data.addSubscription(newSub)
                     dismiss()
                 } label: {
                     Text("Add Subscription")
@@ -265,6 +263,6 @@ struct AddRecurringView: View {
 }
 
 #Preview {
-    AddRecurringView { _ in }
+    AddRecurringView()
         .preferredColorScheme(.dark)
 }

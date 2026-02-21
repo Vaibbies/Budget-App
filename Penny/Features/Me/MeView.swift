@@ -108,11 +108,6 @@ struct MeView: View {
                 .foregroundColor(.white.opacity(0.4))
             Spacer()
         }
-        .overlay(alignment: .trailing) {
-            Button("Edit") {}
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
-        }
         .padding(.top, 8)
         .padding(.bottom, 16)
     }

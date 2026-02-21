@@ -58,7 +58,6 @@ struct SpendingTransaction: Identifiable, Codable {
     let borderColorHex: String
     let category: SpendingCategory
 
-    // Convenience init from original parameters
     init(
         id: UUID = UUID(),
         icon: String, title: String, subtitle: String,
@@ -104,6 +103,41 @@ struct SpendingTransactionGroup: Identifiable, Codable {
     }
 }
 
+// MARK: - Recurring Subscription Model
+struct RecurringSubscription: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let plan: String?
+    let price: Double
+    let iconName: String
+    let iconColorHex: String
+    let bgColorHex: String
+    let nextBilling: String
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        plan: String?,
+        price: Double,
+        iconName: String,
+        iconColor: Color,
+        bgColor: Color,
+        nextBilling: String
+    ) {
+        self.id = id
+        self.name = name
+        self.plan = plan
+        self.price = price
+        self.iconName = iconName
+        self.iconColorHex = iconColor.toHex()
+        self.bgColorHex = bgColor.toHex()
+        self.nextBilling = nextBilling
+    }
+
+    var iconColor: Color { Color(hex: iconColorHex) ?? .white }
+    var bgColor: Color { Color(hex: bgColorHex) ?? .black }
+}
+
 // MARK: - Color Hex Helpers
 extension Color {
     init?(hex: String) {
@@ -136,9 +170,14 @@ class TransactionData {
 
     private let groupsKey = "penny_transaction_groups"
     private let budgetKey = "penny_daily_budget"
+    private let subscriptionsKey = "penny_recurring_subscriptions"
 
     var groups: [SpendingTransactionGroup] {
         didSet { save() }
+    }
+
+    var subscriptions: [RecurringSubscription] {
+        didSet { saveSubscriptions() }
     }
 
     var dailyBudget: Double {
@@ -146,17 +185,22 @@ class TransactionData {
     }
 
     private init() {
-        // Load budget
-        let savedBudget = UserDefaults.standard.double(forKey: "penny_daily_budget")
+        let savedBudget = UserDefaults.standard.double(forKey: budgetKey)
         self.dailyBudget = savedBudget > 0 ? savedBudget : 170.0
 
-        // Load groups
-        if let data = UserDefaults.standard.data(forKey: "penny_transaction_groups"),
+        if let data = UserDefaults.standard.data(forKey: groupsKey),
            let decoded = try? JSONDecoder().decode([SpendingTransactionGroup].self, from: data) {
             self.groups = decoded
         } else {
-            // First launch — seed with sample data
             self.groups = TransactionData.sampleGroups
+        }
+
+        // ✅ per screenshot: if nothing saved yet, start EMPTY (not sampleSubscriptions)
+        if let data = UserDefaults.standard.data(forKey: subscriptionsKey),
+           let decoded = try? JSONDecoder().decode([RecurringSubscription].self, from: data) {
+            self.subscriptions = decoded
+        } else {
+            self.subscriptions = [] // empty instead of sampleSubscriptions
         }
     }
 
@@ -166,8 +210,51 @@ class TransactionData {
         }
     }
 
-    // MARK: - Computed Analytics
+    private func saveSubscriptions() {
+        if let encoded = try? JSONEncoder().encode(subscriptions) {
+            UserDefaults.standard.set(encoded, forKey: subscriptionsKey)
+        }
+    }
 
+    // MARK: - Add Subscription + Auto-log Transaction
+    func addSubscription(_ sub: RecurringSubscription) {
+        // Add to recurring list
+        subscriptions.append(sub)
+
+        // Auto-log as a transaction today
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "h:mm a"
+        let timeString = timeFormatter.string(from: Date())
+
+        let transaction = SpendingTransaction(
+            icon: sub.iconName.contains(".") ? sub.iconName : "music.note",
+            title: sub.name,
+            subtitle: sub.plan ?? "Subscription",
+            time: timeString,
+            amount: "-$\(String(format: "%.2f", sub.price))",
+            isImpulse: false,
+            iconColor: SpendingCategory.subscriptions.color,
+            bgColor: SpendingCategory.subscriptions.color.opacity(0.1),
+            borderColor: SpendingCategory.subscriptions.color.opacity(0.2),
+            category: .subscriptions
+        )
+
+        if let index = groups.firstIndex(where: { $0.title == "Today" }) {
+            var updated = groups[index].transactions
+            updated.insert(transaction, at: 0)
+            groups[index] = SpendingTransactionGroup(
+                title: "Today",
+                transactions: updated
+            )
+        } else {
+            groups.insert(
+                SpendingTransactionGroup(title: "Today", transactions: [transaction]),
+                at: 0
+            )
+        }
+    }
+
+    // MARK: - Computed Analytics
     var allTransactions: [SpendingTransaction] {
         groups.flatMap { $0.transactions }
     }
@@ -231,5 +318,15 @@ class TransactionData {
             SpendingTransaction(icon: "film.fill", title: "AMC Theatres", subtitle: "Entertainment", time: "07:30 PM", amount: "-$28.50", isImpulse: true, iconColor: Color.purple.opacity(0.8), bgColor: Color.purple.opacity(0.1), borderColor: Color.purple.opacity(0.2), category: .entertainment),
             SpendingTransaction(icon: "cup.and.saucer.fill", title: "Philz Coffee", subtitle: "Lifestyle", time: "09:00 AM", amount: "-$7.25", isImpulse: false, iconColor: Color(red: 1.0, green: 0.416, blue: 0.165), bgColor: Color.orange.opacity(0.1), borderColor: Color.orange.opacity(0.2), category: .lifestyle),
         ]),
+    ]
+
+    // Keeping this here is fine, but it is no longer used for default seeding
+    static var sampleSubscriptions: [RecurringSubscription] = [
+        RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: "May 12"),
+        RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: "May 15"),
+        RecurringSubscription(name: "Notion", plan: nil, price: 8.00, iconName: "notion", iconColor: .black, bgColor: .white, nextBilling: "May 18"),
+        RecurringSubscription(name: "YouTube", plan: "Premium", price: 13.99, iconName: "youtube", iconColor: .white, bgColor: Color(red: 1.0, green: 0.0, blue: 0.0), nextBilling: "May 20"),
+        RecurringSubscription(name: "Equinox", plan: "Monthly", price: 95.00, iconName: "dumbbell.fill", iconColor: .white, bgColor: Color(red: 0.1, green: 0.1, blue: 0.1), nextBilling: "May 1"),
+        RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: "May 5"),
     ]
 }

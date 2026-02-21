@@ -9,6 +9,9 @@ struct AddTransactionView: View {
     @State private var selectedDate = Date()
     @State private var isImpulse = false
     @State private var isListening = false
+    @State private var showRecurringPrompt = false
+    @State private var showAddRecurring = false
+    @State private var pendingTransaction: SpendingTransaction? = nil
 
     private var data = TransactionData.shared
 
@@ -46,7 +49,6 @@ struct AddTransactionView: View {
                 }
 
             VStack(spacing: 0) {
-                // Header
                 HStack {
                     Button { dismiss() } label: {
                         Circle()
@@ -83,7 +85,6 @@ struct AddTransactionView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 16)
 
-                // Amount display
                 VStack(spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text("$")
@@ -99,7 +100,6 @@ struct AddTransactionView: View {
                 }
                 .padding(.bottom, 20)
 
-                // Category chips
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(SpendingCategory.allCases, id: \.self) { category in
@@ -116,7 +116,6 @@ struct AddTransactionView: View {
                 }
                 .padding(.bottom, 16)
 
-                // Date + Impulse row
                 HStack(spacing: 12) {
                     DatePicker("", selection: $selectedDate, displayedComponents: .date)
                         .datePickerStyle(.compact)
@@ -127,10 +126,7 @@ struct AddTransactionView: View {
                         .background(
                             RoundedRectangle(cornerRadius: 14)
                                 .fill(Color.white.opacity(0.06))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                                )
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
                         )
                     Spacer()
                     HStack(spacing: 8) {
@@ -147,22 +143,17 @@ struct AddTransactionView: View {
                     .background(
                         RoundedRectangle(cornerRadius: 14)
                             .fill(Color.white.opacity(0.06))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                            )
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
                     )
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
 
-                // Keypad
                 KeypadView { key in handleKey(key) }
                     .padding(.horizontal, 24)
 
                 Spacer()
 
-                // Log Expense button
                 Button(action: logExpense) {
                     Text("Log Expense")
                         .font(.system(size: 17, weight: .semibold))
@@ -174,23 +165,16 @@ struct AddTransactionView: View {
                                 .fill(
                                     amountDouble > 0
                                     ? LinearGradient(
-                                        colors: [
-                                            Color(red: 1.0, green: 0.53, blue: 0.25),
-                                            Color(red: 1.0, green: 0.35, blue: 0.10)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
+                                        colors: [Color(red: 1.0, green: 0.53, blue: 0.25), Color(red: 1.0, green: 0.35, blue: 0.10)],
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
                                     )
                                     : LinearGradient(
                                         colors: [Color.white.opacity(0.08), Color.white.opacity(0.08)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
+                                        startPoint: .topLeading, endPoint: .bottomTrailing
                                     )
                                 )
                                 .shadow(
-                                    color: amountDouble > 0
-                                        ? Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.4)
-                                        : .clear,
+                                    color: amountDouble > 0 ? Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.4) : .clear,
                                     radius: 12, y: 4
                                 )
                         )
@@ -201,25 +185,35 @@ struct AddTransactionView: View {
             }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        .alert("Add to Recurring?", isPresented: $showRecurringPrompt) {
+            Button("Add to Recurring") {
+                showAddRecurring = true
+            }
+            Button("Skip", role: .cancel) {
+                dismiss()
+            }
+        } message: {
+            Text("Would you like to add \(merchantName.isEmpty ? "this subscription" : merchantName) as a recurring subscription?")
+        }
+        .sheet(isPresented: $showAddRecurring, onDismiss: { dismiss() }) {
+            QuickAddRecurringView(
+                prefillName: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
+                prefillPrice: amountDouble
+            )
+            .presentationCornerRadius(30)
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private func handleKey(_ key: String) {
         Haptics.light()
         switch key {
         case "delete":
-            if amountString.count > 1 {
-                amountString.removeLast()
-            } else {
-                amountString = "0"
-            }
-        case ".":
-            break
+            if amountString.count > 1 { amountString.removeLast() } else { amountString = "0" }
+        case ".": break
         default:
-            if amountString == "0" {
-                amountString = key
-            } else if amountString.count < 7 {
-                amountString += key
-            }
+            if amountString == "0" { amountString = key }
+            else if amountString.count < 7 { amountString += key }
         }
     }
 
@@ -238,9 +232,9 @@ struct AddTransactionView: View {
         } else if Calendar.current.isDateInYesterday(selectedDate) {
             dayLabel = "Yesterday"
         } else {
-            let labelFormatter = DateFormatter()
-            labelFormatter.dateFormat = "EEEE, MMM d"
-            dayLabel = labelFormatter.string(from: selectedDate)
+            let fmt = DateFormatter()
+            fmt.dateFormat = "EEEE, MMM d"
+            dayLabel = fmt.string(from: selectedDate)
         }
 
         let transaction = SpendingTransaction(
@@ -259,27 +253,24 @@ struct AddTransactionView: View {
         if let index = data.groups.firstIndex(where: { $0.title == dayLabel }) {
             var updated = data.groups[index].transactions
             updated.insert(transaction, at: 0)
-            data.groups[index] = SpendingTransactionGroup(
-                title: data.groups[index].title,
-                transactions: updated
-            )
+            data.groups[index] = SpendingTransactionGroup(title: data.groups[index].title, transactions: updated)
         } else {
-            let labelFormatter = DateFormatter()
-            labelFormatter.dateFormat = "EEEE, MMM d"
+            let fmt = DateFormatter()
+            fmt.dateFormat = "EEEE, MMM d"
             let insertIndex = data.groups.firstIndex(where: { group in
                 guard group.title != "Today" && group.title != "Yesterday" else { return false }
-                if let groupDate = labelFormatter.date(from: group.title) {
-                    return groupDate < selectedDate
-                }
+                if let groupDate = fmt.date(from: group.title) { return groupDate < selectedDate }
                 return false
             }) ?? data.groups.endIndex
-            data.groups.insert(
-                SpendingTransactionGroup(title: dayLabel, transactions: [transaction]),
-                at: insertIndex
-            )
+            data.groups.insert(SpendingTransactionGroup(title: dayLabel, transactions: [transaction]), at: insertIndex)
         }
 
-        dismiss()
+        // Prompt if subscriptions category
+        if selectedCategory == .subscriptions {
+            showRecurringPrompt = true
+        } else {
+            dismiss()
+        }
     }
 
     private func startDictation() {
@@ -398,17 +389,12 @@ struct NoMoveTextField: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UITextField, context: Context) {
-        if uiView.text != text {
-            uiView.text = text
-        }
+        if uiView.text != text { uiView.text = text }
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
         @Binding var text: String
-
-        init(text: Binding<String>) {
-            _text = text
-        }
+        init(text: Binding<String>) { _text = text }
 
         @objc func textChanged(_ tf: UITextField) {
             let raw = tf.text ?? ""

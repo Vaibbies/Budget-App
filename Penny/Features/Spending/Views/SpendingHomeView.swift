@@ -3,6 +3,9 @@ import SwiftUI
 struct SpendingHomeView: View {
     @State private var showDrawer = false
     @State private var showAddTransaction = false
+    @State private var showTransactions = false
+    @State private var showRecurring = false
+
     private var data = TransactionData.shared
 
     var greeting: String {
@@ -91,8 +94,6 @@ struct SpendingHomeView: View {
                         recentTransactionsSection
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
-
-                        TransactionsCard()
 
                         Color.clear.frame(height: 120)
                     }
@@ -193,10 +194,12 @@ struct SpendingHomeView: View {
                             .fill(Color.white.opacity(0.06))
                             .frame(height: 6)
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(LinearGradient(
-                                colors: [Color(red: 1.0, green: 0.42, blue: 0.16), Color(red: 1.0, green: 0.6, blue: 0.36)],
-                                startPoint: .leading, endPoint: .trailing
-                            ))
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(red: 1.0, green: 0.42, blue: 0.16), Color(red: 1.0, green: 0.6, blue: 0.36)],
+                                    startPoint: .leading, endPoint: .trailing
+                                )
+                            )
                             .frame(width: geo.size.width * min(CGFloat(data.dailySpent / data.dailyBudget), 1.0), height: 6)
                     }
                 }
@@ -287,9 +290,19 @@ struct SpendingHomeView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                 Spacer()
-                Text("View All")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                Button {
+                    showRecurring = true
+                    Haptics.light()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("View All")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                    }
+                }
             }
 
             VStack(spacing: 8) {
@@ -324,19 +337,34 @@ struct SpendingHomeView: View {
                 }
             }
         }
+        .sheet(isPresented: $showRecurring) {
+            RecurringView()
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: - Recent Transactions
     private var recentTransactionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Recent")
+                Text("Recent Transactions")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                 Spacer()
-                Text("View All")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                Button {
+                    showTransactions = true
+                    Haptics.light()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("View All")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                    }
+                }
             }
 
             VStack(spacing: 8) {
@@ -388,6 +416,11 @@ struct SpendingHomeView: View {
                     )
                 }
             }
+        }
+        .sheet(isPresented: $showTransactions) {
+            TransactionsView()
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
         }
     }
 

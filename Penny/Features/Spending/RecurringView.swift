@@ -1,30 +1,12 @@
 import SwiftUI
 
-// MARK: - Recurring Subscription Model
-struct RecurringSubscription: Identifiable {
-    let id = UUID()
-    let name: String
-    let plan: String?
-    let price: Double
-    let iconName: String
-    let iconColor: Color
-    let bgColor: Color
-    let nextBilling: String
-}
-
 // MARK: - RecurringView
 struct RecurringView: View {
     @Environment(\.dismiss) var dismiss
     @State private var showAddRecurring = false
 
-    @State private var subscriptions: [RecurringSubscription] = [
-        RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: "May 12"),
-        RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: "May 15"),
-        RecurringSubscription(name: "Notion", plan: nil, price: 8.00, iconName: "notion", iconColor: .black, bgColor: .white, nextBilling: "May 18"),
-        RecurringSubscription(name: "YouTube", plan: "Premium", price: 13.99, iconName: "youtube", iconColor: .white, bgColor: Color(red: 1.0, green: 0.0, blue: 0.0), nextBilling: "May 20"),
-        RecurringSubscription(name: "Equinox", plan: "Monthly", price: 95.00, iconName: "dumbbell.fill", iconColor: .white, bgColor: Color(red: 0.1, green: 0.1, blue: 0.1), nextBilling: "May 1"),
-        RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: "May 5"),
-    ]
+    @State private var data = TransactionData.shared
+    var subscriptions: [RecurringSubscription] { data.subscriptions }
 
     var monthlyTotal: Double {
         subscriptions.reduce(0) { $0 + $1.price }
@@ -53,6 +35,7 @@ struct RecurringView: View {
     var body: some View {
         ZStack {
             Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
+
             RadialGradient(
                 colors: [
                     Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.6),
@@ -66,7 +49,8 @@ struct RecurringView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
+
+                // HEADER
                 HStack {
                     Button { dismiss() } label: {
                         Circle()
@@ -110,6 +94,7 @@ struct RecurringView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 20) {
+
                         monthlySpendCard
                             .padding(.horizontal, 24)
 
@@ -118,15 +103,23 @@ struct RecurringView: View {
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(.white)
                             Spacer()
-                            Text("View All")
+                            Text("\(subscriptions.count) services")
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                                .foregroundColor(.white.opacity(0.3))
                         }
                         .padding(.horizontal, 24)
 
                         LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(subscriptions) { sub in
-                                SubscriptionSquareCard(subscription: sub)
+                                SubscriptionSquareCard(
+                                    subscription: sub,
+                                    onDelete: {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                                            data.subscriptions.removeAll { $0.id == sub.id }
+                                        }
+                                        Haptics.medium()
+                                    }
+                                )
                             }
                         }
                         .padding(.horizontal, 24)
@@ -136,11 +129,9 @@ struct RecurringView: View {
             }
         }
         .sheet(isPresented: $showAddRecurring) {
-            AddRecurringView { newSub in
-                subscriptions.append(newSub)
-            }
-            .presentationCornerRadius(30)
-            .presentationDragIndicator(.visible)
+            AddRecurringView()
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -148,6 +139,7 @@ struct RecurringView: View {
     private var monthlySpendCard: some View {
         VStack(spacing: 0) {
             HStack(alignment: .bottom) {
+
                 VStack(alignment: .leading, spacing: 6) {
                     Text("MONTHLY SPEND")
                         .font(.system(size: 10, weight: .medium))
@@ -158,7 +150,9 @@ struct RecurringView: View {
                         Text("$\(Int(monthlyTotal))")
                             .font(.system(size: 36, weight: .light, design: .serif))
                             .foregroundColor(.white)
-                        Text(String(format: ".%02d", Int((monthlyTotal.truncatingRemainder(dividingBy: 1)) * 100)))
+
+                        Text(String(format: ".%02d",
+                            Int((monthlyTotal.truncatingRemainder(dividingBy: 1)) * 100)))
                             .font(.system(size: 22, weight: .light, design: .serif))
                             .foregroundColor(.white.opacity(0.4))
                     }
@@ -172,6 +166,7 @@ struct RecurringView: View {
                         .foregroundColor(isSpendingDown
                             ? Color(red: 0.2, green: 0.85, blue: 0.4)
                             : Color(red: 1.0, green: 0.42, blue: 0.16))
+
                     Text("\(String(format: "%.0f", abs(monthOverMonthChange)))%")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(isSpendingDown
@@ -185,14 +180,15 @@ struct RecurringView: View {
                         .fill((isSpendingDown
                             ? Color(red: 0.2, green: 0.85, blue: 0.4)
                             : Color(red: 1.0, green: 0.42, blue: 0.16)).opacity(0.1))
-                        .overlay(Capsule().stroke((isSpendingDown
-                            ? Color(red: 0.2, green: 0.85, blue: 0.4)
-                            : Color(red: 1.0, green: 0.42, blue: 0.16)).opacity(0.2), lineWidth: 1))
+                        .overlay(
+                            Capsule().stroke((isSpendingDown
+                                ? Color(red: 0.2, green: 0.85, blue: 0.4)
+                                : Color(red: 1.0, green: 0.42, blue: 0.16)).opacity(0.2), lineWidth: 1)
+                        )
                 )
             }
             .padding(.bottom, 24)
 
-            // Real weekly bars
             let maxWeekly = weeklyTotals.max() ?? 1
             let weekLabels = ["WK 1", "WK 2", "WK 3", "WK 4"]
 
@@ -232,21 +228,27 @@ struct ChartBarView: View {
                         .fill(
                             isActive
                             ? LinearGradient(
-                                colors: [Color(red: 1.0, green: 0.42, blue: 0.16), Color(red: 1.0, green: 0.6, blue: 0.36)],
-                                startPoint: .bottom, endPoint: .top
+                                colors: [Color(red: 1.0, green: 0.42, blue: 0.16),
+                                         Color(red: 1.0, green: 0.6, blue: 0.36)],
+                                startPoint: .bottom,
+                                endPoint: .top
                             )
                             : LinearGradient(
-                                colors: [Color.white.opacity(0.08), Color.white.opacity(0.08)],
-                                startPoint: .bottom, endPoint: .top
+                                colors: [Color.white.opacity(0.08),
+                                         Color.white.opacity(0.08)],
+                                startPoint: .bottom,
+                                endPoint: .top
                             )
                         )
                         .frame(height: geo.size.height * heightFraction)
-                        .shadow(color: isActive ? Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.3) : .clear, radius: 8)
                 }
             }
+
             Text(month)
                 .font(.system(size: 10, weight: isActive ? .semibold : .medium))
-                .foregroundColor(isActive ? Color(red: 1.0, green: 0.42, blue: 0.16) : .white.opacity(0.25))
+                .foregroundColor(isActive
+                    ? Color(red: 1.0, green: 0.42, blue: 0.16)
+                    : .white.opacity(0.25))
         }
         .frame(maxWidth: .infinity)
     }
@@ -255,16 +257,17 @@ struct ChartBarView: View {
 // MARK: - Square Subscription Card
 struct SubscriptionSquareCard: View {
     let subscription: RecurringSubscription
+    let onDelete: () -> Void
+
     @State private var isPressed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+
             RoundedRectangle(cornerRadius: 14)
                 .fill(subscription.bgColor)
                 .frame(width: 48, height: 48)
-                .overlay(
-                    serviceIcon(for: subscription.iconName, color: subscription.iconColor)
-                )
+                .overlay(serviceIcon(for: subscription.iconName, color: subscription.iconColor))
 
             Spacer()
 
@@ -275,7 +278,7 @@ struct SubscriptionSquareCard: View {
 
                 if let plan = subscription.plan {
                     Text(plan)
-                        .font(.system(size: 11, weight: .regular))
+                        .font(.system(size: 11))
                         .foregroundColor(.white.opacity(0.4))
                 }
             }
@@ -284,8 +287,9 @@ struct SubscriptionSquareCard: View {
                 Text("$\(String(format: "%.2f", subscription.price))")
                     .font(.system(size: 17, weight: .regular, design: .serif))
                     .foregroundColor(.white)
+
                 Text("/mo")
-                    .font(.system(size: 9, weight: .regular))
+                    .font(.system(size: 9))
                     .foregroundColor(.white.opacity(0.3))
             }
         }
@@ -304,6 +308,13 @@ struct SubscriptionSquareCard: View {
                 .onChanged { _ in withAnimation(.easeOut(duration: 0.1)) { isPressed = true } }
                 .onEnded { _ in withAnimation(.easeOut(duration: 0.1)) { isPressed = false } }
         )
+        .contextMenu {
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("Delete Subscription", systemImage: "trash")
+            }
+        }
     }
 
     @ViewBuilder
@@ -313,21 +324,25 @@ struct SubscriptionSquareCard: View {
             Text("N")
                 .font(.system(size: 26, weight: .black, design: .serif))
                 .foregroundColor(.red)
+
         case "spotify":
             Image(systemName: "music.note")
-                .font(.system(size: 22, weight: .medium))
+                .font(.system(size: 22))
                 .foregroundColor(color)
+
         case "notion":
             Text("N")
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(.black)
+
         case "youtube":
             Image(systemName: "play.rectangle.fill")
-                .font(.system(size: 22, weight: .medium))
+                .font(.system(size: 22))
                 .foregroundColor(color)
+
         default:
             Image(systemName: name)
-                .font(.system(size: 20, weight: .medium))
+                .font(.system(size: 20))
                 .foregroundColor(color)
         }
     }
