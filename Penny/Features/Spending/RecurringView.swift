@@ -3,9 +3,9 @@ import SwiftUI
 // MARK: - RecurringView
 struct RecurringView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(TransactionData.self) private var data
     @State private var showAddRecurring = false
 
-    @State private var data = TransactionData.shared
     var subscriptions: [RecurringSubscription] { data.subscriptions }
 
     var monthlyTotal: Double {
@@ -33,6 +33,7 @@ struct RecurringView: View {
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
     var body: some View {
+        @Bindable var data = data
         ZStack {
             Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
 
@@ -50,7 +51,6 @@ struct RecurringView: View {
 
             VStack(spacing: 0) {
 
-                // HEADER
                 HStack {
                     Button { dismiss() } label: {
                         Circle()
@@ -151,10 +151,12 @@ struct RecurringView: View {
                             .font(.system(size: 36, weight: .light, design: .serif))
                             .foregroundColor(.white)
 
-                        Text(String(format: ".%02d",
-                            Int((monthlyTotal.truncatingRemainder(dividingBy: 1)) * 100)))
-                            .font(.system(size: 22, weight: .light, design: .serif))
-                            .foregroundColor(.white.opacity(0.4))
+                        Text(
+                            String(format: ".%02d",
+                                   Int((monthlyTotal.truncatingRemainder(dividingBy: 1)) * 100))
+                        )
+                        .font(.system(size: 22, weight: .light, design: .serif))
+                        .foregroundColor(.white.opacity(0.4))
                     }
                 }
 
@@ -228,14 +230,18 @@ struct ChartBarView: View {
                         .fill(
                             isActive
                             ? LinearGradient(
-                                colors: [Color(red: 1.0, green: 0.42, blue: 0.16),
-                                         Color(red: 1.0, green: 0.6, blue: 0.36)],
+                                colors: [
+                                    Color(red: 1.0, green: 0.42, blue: 0.16),
+                                    Color(red: 1.0, green: 0.6, blue: 0.36)
+                                ],
                                 startPoint: .bottom,
                                 endPoint: .top
                             )
                             : LinearGradient(
-                                colors: [Color.white.opacity(0.08),
-                                         Color.white.opacity(0.08)],
+                                colors: [
+                                    Color.white.opacity(0.08),
+                                    Color.white.opacity(0.08)
+                                ],
                                 startPoint: .bottom,
                                 endPoint: .top
                             )
@@ -265,9 +271,16 @@ struct SubscriptionSquareCard: View {
         VStack(alignment: .leading, spacing: 12) {
 
             RoundedRectangle(cornerRadius: 14)
-                .fill(subscription.bgColor)
+                .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
                 .frame(width: 48, height: 48)
-                .overlay(serviceIcon(for: subscription.iconName, color: subscription.iconColor))
+                .overlay(
+                    BrandLogoView(
+                        name: subscription.name,
+                        size: 48,
+                        fallbackIcon: subscription.iconName,
+                        fallbackColor: subscription.iconColor
+                    )
+                )
 
             Spacer()
 
@@ -316,39 +329,10 @@ struct SubscriptionSquareCard: View {
             }
         }
     }
-
-    @ViewBuilder
-    func serviceIcon(for name: String, color: Color) -> some View {
-        switch name {
-        case "netflix":
-            Text("N")
-                .font(.system(size: 26, weight: .black, design: .serif))
-                .foregroundColor(.red)
-
-        case "spotify":
-            Image(systemName: "music.note")
-                .font(.system(size: 22))
-                .foregroundColor(color)
-
-        case "notion":
-            Text("N")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(.black)
-
-        case "youtube":
-            Image(systemName: "play.rectangle.fill")
-                .font(.system(size: 22))
-                .foregroundColor(color)
-
-        default:
-            Image(systemName: name)
-                .font(.system(size: 20))
-                .foregroundColor(color)
-        }
-    }
 }
 
 #Preview {
     RecurringView()
         .preferredColorScheme(.dark)
+        .environment(TransactionData.shared)
 }

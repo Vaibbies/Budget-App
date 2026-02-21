@@ -165,17 +165,23 @@ struct AddTransactionView: View {
                                 .fill(
                                     amountDouble > 0
                                     ? LinearGradient(
-                                        colors: [Color(red: 1.0, green: 0.53, blue: 0.25), Color(red: 1.0, green: 0.35, blue: 0.10)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                        colors: [
+                                            Color(red: 1.0, green: 0.53, blue: 0.25),
+                                            Color(red: 1.0, green: 0.35, blue: 0.10)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
                                     )
                                     : LinearGradient(
                                         colors: [Color.white.opacity(0.08), Color.white.opacity(0.08)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
                                     )
                                 )
                                 .shadow(
                                     color: amountDouble > 0 ? Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.4) : .clear,
-                                    radius: 12, y: 4
+                                    radius: 12,
+                                    y: 4
                                 )
                         )
                 }
@@ -197,7 +203,7 @@ struct AddTransactionView: View {
         }
         .sheet(isPresented: $showAddRecurring, onDismiss: { dismiss() }) {
             QuickAddRecurringView(
-                prefillName: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
+                prefillName: merchantName,
                 prefillPrice: amountDouble
             )
             .presentationCornerRadius(30)
@@ -265,7 +271,6 @@ struct AddTransactionView: View {
             data.groups.insert(SpendingTransactionGroup(title: dayLabel, transactions: [transaction]), at: insertIndex)
         }
 
-        // Prompt if subscriptions category
         if selectedCategory == .subscriptions {
             showRecurringPrompt = true
         } else {
@@ -301,9 +306,10 @@ struct CategoryChip: View {
                     .fill(isSelected ? category.color : Color.white.opacity(0.06))
                     .overlay(
                         Capsule()
-                            .stroke(isSelected
-                                    ? category.color.opacity(0.3)
-                                    : Color.white.opacity(0.06), lineWidth: 1)
+                            .stroke(
+                                isSelected ? category.color.opacity(0.3) : Color.white.opacity(0.06),
+                                lineWidth: 1
+                            )
                     )
             )
         }
@@ -336,6 +342,7 @@ struct KeypadView: View {
                                             .stroke(Color.white.opacity(0.06), lineWidth: 1)
                                     )
                                     .frame(height: 64)
+
                                 if key == "delete" {
                                     Image(systemName: "delete.backward")
                                         .font(.system(size: 20, weight: .medium))

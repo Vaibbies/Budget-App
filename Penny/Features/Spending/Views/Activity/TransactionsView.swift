@@ -132,12 +132,16 @@ struct TransactionsView: View {
                             .foregroundColor(TransactionsTheme.ink)
                     )
             }
+
             Spacer()
+
             Text("TRANSACTIONS")
                 .font(.system(size: 12, weight: .medium))
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.5))
+
             Spacer()
+
             Button {
                 showAddTransaction = true
                 Haptics.medium()
@@ -165,6 +169,7 @@ struct TransactionsView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(TransactionsTheme.muted)
                 .tracking(2)
+
             Text("$\(String(format: "%.2f", data.totalSpent))")
                 .font(.system(size: 48, weight: .regular, design: .serif))
                 .foregroundColor(.white)
@@ -193,28 +198,36 @@ struct TransactionsView: View {
     private func fullTransactionRow(_ transaction: SpendingTransaction) -> some View {
         HStack(spacing: 16) {
             RoundedRectangle(cornerRadius: 12)
-                .fill(transaction.bgColor)
+                .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
                 .frame(width: 48, height: 48)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(transaction.borderColor, lineWidth: 1))
                 .overlay(
-                    Image(systemName: transaction.icon)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(transaction.iconColor)
+                    BrandLogoView(
+                        name: transaction.title,
+                        size: 48,
+                        fallbackIcon: transaction.icon,
+                        fallbackColor: transaction.iconColor
+                    )
                 )
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(transaction.title)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
+
                 Text("\(transaction.time) • \(transaction.subtitle)")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(TransactionsTheme.muted)
             }
+
             Spacer()
+
             VStack(alignment: .trailing, spacing: 4) {
                 Text(transaction.amount)
                     .font(.system(size: 17, weight: .medium, design: .serif))
                     .foregroundColor(transaction.isImpulse ? TransactionsTheme.accent : .white)
                     .tracking(-0.5)
+
                 if transaction.isImpulse {
                     Text("impulse")
                         .font(.system(size: 9, weight: .medium))
@@ -253,6 +266,7 @@ struct EditTransactionView: View {
         self.transaction = transaction
         self.originalGroupIndex = originalGroupIndex
         self.originalTxIndex = originalTxIndex
+
         _merchantName = State(initialValue: transaction.title)
         _amountString = State(initialValue: String(Int(transaction.amountValue * 100)))
         _selectedCategory = State(initialValue: transaction.category)
@@ -316,12 +330,16 @@ struct EditTransactionView: View {
                                     .foregroundColor(.white)
                             )
                     }
+
                     Spacer()
+
                     Text("EDIT EXPENSE")
                         .font(.system(size: 12, weight: .medium))
                         .tracking(2)
                         .foregroundColor(.white.opacity(0.5))
+
                     Spacer()
+
                     Button { isListening.toggle(); Haptics.medium() } label: {
                         Circle()
                             .fill(isListening
@@ -345,11 +363,13 @@ struct EditTransactionView: View {
                         Text("$")
                             .font(.system(size: 32, weight: .light))
                             .foregroundColor(.white.opacity(0.5))
+
                         Text(displayAmount)
                             .font(.system(size: 64, weight: .light, design: .serif))
                             .foregroundColor(.white)
                             .minimumScaleFactor(0.5)
                     }
+
                     NoMoveTextField(placeholder: "MERCHANT NAME", text: $merchantName)
                         .frame(height: 30)
                 }
@@ -383,11 +403,14 @@ struct EditTransactionView: View {
                                 .fill(Color.white.opacity(0.06))
                                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
                         )
+
                     Spacer()
+
                     HStack(spacing: 8) {
                         Text("Impulse")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.white.opacity(0.5))
+
                         Toggle("", isOn: $isImpulse)
                             .labelsHidden()
                             .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
@@ -420,17 +443,23 @@ struct EditTransactionView: View {
                                 .fill(
                                     amountDouble > 0
                                     ? LinearGradient(
-                                        colors: [Color(red: 1.0, green: 0.53, blue: 0.25), Color(red: 1.0, green: 0.35, blue: 0.10)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                        colors: [
+                                            Color(red: 1.0, green: 0.53, blue: 0.25),
+                                            Color(red: 1.0, green: 0.35, blue: 0.10)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
                                     )
                                     : LinearGradient(
                                         colors: [Color.white.opacity(0.08), Color.white.opacity(0.08)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
                                     )
                                 )
                                 .shadow(
                                     color: amountDouble > 0 ? Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.4) : .clear,
-                                    radius: 12, y: 4
+                                    radius: 12,
+                                    y: 4
                                 )
                         )
                 }
@@ -519,6 +548,7 @@ struct EditTransactionView: View {
                 }
                 return false
             }) ?? data.groups.endIndex
+
             data.groups.insert(
                 SpendingTransactionGroup(title: newDayLabel, transactions: [updated]),
                 at: insertIndex

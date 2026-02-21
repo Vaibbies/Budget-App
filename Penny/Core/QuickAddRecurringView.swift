@@ -43,9 +43,6 @@ struct QuickAddRecurringView: View {
     @State private var plan = ""
     @State private var selectedFrequency: BillingFrequency = .monthly
     @State private var selectedColor = Color(red: 0.35, green: 0.98, blue: 0.85)
-    @State private var selectedIcon = "music.note"
-
-    let iconOptions = ["music.note", "creditcard.fill", "play.rectangle.fill", "cloud.fill", "dumbbell.fill", "tv.fill", "wifi", "phone.fill", "gamecontroller.fill", "book.fill", "cart.fill", "envelope.fill"]
 
     init(prefillName: String, prefillPrice: Double) {
         self.prefillName = prefillName
@@ -87,7 +84,11 @@ struct QuickAddRecurringView: View {
                             .fill(Color.white.opacity(0.07))
                             .frame(width: 40, height: 40)
                             .overlay(Circle().stroke(Color.white.opacity(0.06), lineWidth: 1))
-                            .overlay(Image(systemName: "xmark").font(.system(size: 14, weight: .semibold)).foregroundColor(.white))
+                            .overlay(
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                            )
                     }
                     Spacer()
                     Text("ADD TO RECURRING")
@@ -107,13 +108,17 @@ struct QuickAddRecurringView: View {
                         // Preview card
                         HStack(spacing: 16) {
                             RoundedRectangle(cornerRadius: 14)
-                                .fill(selectedColor)
+                                .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
                                 .frame(width: 56, height: 56)
                                 .overlay(
-                                    Image(systemName: selectedIcon)
-                                        .font(.system(size: 24, weight: .medium))
-                                        .foregroundColor(.white)
+                                    BrandLogoView(
+                                        name: name.isEmpty ? prefillName : name,
+                                        size: 56,
+                                        fallbackIcon: "music.note",
+                                        fallbackColor: .white
+                                    )
                                 )
+
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(name.isEmpty ? prefillName : name)
                                     .font(.system(size: 16, weight: .medium))
@@ -199,33 +204,11 @@ struct QuickAddRecurringView: View {
                                                     RoundedRectangle(cornerRadius: 14)
                                                         .stroke(selectedFrequency == freq
                                                             ? Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.3)
-                                                            : Color.white.opacity(0.06), lineWidth: 1)
+                                                            : Color.white.opacity(0.06),
+                                                            lineWidth: 1
+                                                        )
                                                 )
                                         )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Icon picker
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("ICON")
-                                .font(.system(size: 10, weight: .medium))
-                                .tracking(2)
-                                .foregroundColor(.white.opacity(0.4))
-                                .padding(.horizontal, 4)
-
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 10) {
-                                ForEach(iconOptions, id: \.self) { icon in
-                                    Button {
-                                        selectedIcon = icon
-                                        Haptics.light()
-                                    } label: {
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .fill(selectedIcon == icon ? selectedColor.opacity(0.2) : Color.white.opacity(0.05))
-                                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(selectedIcon == icon ? selectedColor.opacity(0.5) : Color.white.opacity(0.06), lineWidth: 1))
-                                            .overlay(Image(systemName: icon).font(.system(size: 16, weight: .medium)).foregroundColor(selectedIcon == icon ? selectedColor : .white.opacity(0.5)))
-                                            .frame(height: 44)
                                     }
                                 }
                             }
@@ -257,7 +240,10 @@ struct QuickAddRecurringView: View {
                                         Circle()
                                             .fill(color)
                                             .frame(width: 32, height: 32)
-                                            .overlay(Circle().stroke(selectedColor == color ? Color.white.opacity(0.8) : Color.clear, lineWidth: 2))
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(selectedColor == color ? Color.white.opacity(0.8) : Color.clear, lineWidth: 2)
+                                            )
                                     }
                                 }
                                 Spacer()
@@ -275,7 +261,7 @@ struct QuickAddRecurringView: View {
                         name: name.isEmpty ? prefillName : name,
                         plan: plan.isEmpty ? nil : plan,
                         price: prefillPrice,
-                        iconName: selectedIcon,
+                        iconName: "music.note",
                         iconColor: .white,
                         bgColor: selectedColor,
                         nextBilling: nextBillingString
@@ -308,6 +294,7 @@ struct QuickAddRecurringView: View {
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.horizontal, 4)
+
             TextField(placeholder, text: text)
                 .font(.system(size: 15, weight: .regular))
                 .foregroundColor(.white)

@@ -2,27 +2,31 @@ import SwiftUI
 
 struct AddRecurringView: View {
     @Environment(\.dismiss) var dismiss
-    private var data = TransactionData.shared
+    @Environment(TransactionData.self) private var data
 
     @State private var name = ""
     @State private var plan = ""
-    @State private var priceString = ""
-    @State private var nextBilling = Date()
-    @State private var selectedColor = Color(red: 0.38, green: 0.65, blue: 0.98)
-    @State private var selectedIcon = "creditcard.fill"
+    @State private var selectedFrequency: BillingFrequency = .monthly
 
-    let iconOptions = ["creditcard.fill", "cart.fill", "music.note", "play.rectangle.fill", "cloud.fill", "dumbbell.fill", "book.fill", "gamecontroller.fill", "tv.fill", "wifi", "phone.fill", "envelope.fill"]
+    private let accent = Color(red: 0.35, green: 0.98, blue: 0.85)
 
-    var priceDouble: Double { Double(priceString) ?? 0 }
+    private var nextBillingString: String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMM d"
+        return fmt.string(from: selectedFrequency.nextDate)
+    }
+
+    private var nextBillingFull: String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "EEEE, MMM d"
+        return fmt.string(from: selectedFrequency.nextDate)
+    }
 
     var body: some View {
         ZStack {
             Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
             RadialGradient(
-                colors: [
-                    Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.5),
-                    Color.clear
-                ],
+                colors: [accent.opacity(0.3), Color.clear],
                 center: .init(x: 0.5, y: 0.0),
                 startRadius: 0,
                 endRadius: 400
@@ -30,6 +34,7 @@ struct AddRecurringView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Header
                 HStack {
                     Button { dismiss() } label: {
                         Circle()
@@ -42,12 +47,16 @@ struct AddRecurringView: View {
                                     .foregroundColor(.white)
                             )
                     }
+
                     Spacer()
+
                     Text("NEW SUBSCRIPTION")
                         .font(.system(size: 12, weight: .medium))
                         .tracking(2)
                         .foregroundColor(.white.opacity(0.5))
+
                     Spacer()
+
                     Circle().fill(Color.clear).frame(width: 40, height: 40)
                 }
                 .padding(.horizontal, 24)
@@ -56,32 +65,36 @@ struct AddRecurringView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        // Live preview card
+
+                        // Preview card
                         HStack(spacing: 16) {
                             RoundedRectangle(cornerRadius: 14)
-                                .fill(selectedColor)
+                                .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
                                 .frame(width: 56, height: 56)
                                 .overlay(
-                                    Image(systemName: selectedIcon)
-                                        .font(.system(size: 24, weight: .medium))
-                                        .foregroundColor(.white)
+                                    BrandLogoView(
+                                        name: name,
+                                        size: 56,
+                                        fallbackIcon: "creditcard.fill",
+                                        fallbackColor: accent
+                                    )
                                 )
+
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(name.isEmpty ? "Service Name" : name)
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(name.isEmpty ? .white.opacity(0.3) : .white)
-                                Text(plan.isEmpty ? "Plan" : plan)
-                                    .font(.system(size: 12, weight: .regular))
+                                Text(plan.isEmpty ? selectedFrequency.rawValue : plan)
+                                    .font(.system(size: 12))
                                     .foregroundColor(.white.opacity(0.4))
                             }
+
                             Spacer()
-                            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                                Text("$\(priceString.isEmpty ? "0.00" : priceString)")
-                                    .font(.system(size: 20, weight: .light, design: .serif))
-                                    .foregroundColor(.white)
-                                Text("/mo")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.white.opacity(0.3))
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("Next: \(nextBillingString)")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(accent.opacity(0.7))
                             }
                         }
                         .padding(20)
@@ -91,146 +104,97 @@ struct AddRecurringView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.06), lineWidth: 1))
                         )
 
-                        VStack(spacing: 12) {
-                            inputField(label: "SERVICE NAME", text: $name, placeholder: "Netflix, Spotify...")
-                            inputField(label: "PLAN", text: $plan, placeholder: "Premium, Monthly...")
-                            inputField(label: "MONTHLY PRICE", text: $priceString, placeholder: "9.99", keyboard: .decimalPad)
-                        }
+                        // Fields
+                        inputField(label: "SERVICE NAME", text: $name, placeholder: "Netflix, Spotify...")
+                        inputField(label: "PLAN DESCRIPTION (OPTIONAL)", text: $plan, placeholder: "e.g. Premium, Family, Student...")
 
-                        // Icon picker
+                        // Frequency picker
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("ICON")
+                            Text("BILLING FREQUENCY")
                                 .font(.system(size: 10, weight: .medium))
                                 .tracking(2)
                                 .foregroundColor(.white.opacity(0.4))
                                 .padding(.horizontal, 4)
 
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 10) {
-                                ForEach(iconOptions, id: \.self) { icon in
+                            VStack(spacing: 8) {
+                                ForEach(BillingFrequency.allCases, id: \.self) { freq in
                                     Button {
-                                        selectedIcon = icon
+                                        selectedFrequency = freq
                                         Haptics.light()
                                     } label: {
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .fill(selectedIcon == icon
-                                                  ? Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.2)
-                                                  : Color.white.opacity(0.05))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 10)
-                                                    .stroke(selectedIcon == icon
-                                                            ? Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.5)
-                                                            : Color.white.opacity(0.06), lineWidth: 1)
-                                            )
-                                            .overlay(
-                                                Image(systemName: icon)
-                                                    .font(.system(size: 16, weight: .medium))
-                                                    .foregroundColor(selectedIcon == icon
-                                                                     ? Color(red: 1.0, green: 0.42, blue: 0.16)
-                                                                     : .white.opacity(0.5))
-                                            )
-                                            .frame(height: 44)
+                                        HStack(spacing: 12) {
+                                            Image(systemName: freq.icon)
+                                                .font(.system(size: 14, weight: .medium))
+                                                .foregroundColor(selectedFrequency == freq ? accent : .white.opacity(0.4))
+                                                .frame(width: 20)
+
+                                            Text(freq.rawValue)
+                                                .font(.system(size: 14, weight: .medium))
+                                                .foregroundColor(selectedFrequency == freq ? .white : .white.opacity(0.5))
+
+                                            Spacer()
+
+                                            if selectedFrequency == freq {
+                                                Text(nextBillingFull)
+                                                    .font(.system(size: 11, weight: .medium))
+                                                    .foregroundColor(accent.opacity(0.8))
+                                                Image(systemName: "checkmark")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .foregroundColor(accent)
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 12)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 14)
+                                                .fill(selectedFrequency == freq ? accent.opacity(0.08) : Color.white.opacity(0.05))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 14)
+                                                        .stroke(selectedFrequency == freq ? accent.opacity(0.3) : Color.white.opacity(0.06), lineWidth: 1)
+                                                )
+                                        )
                                     }
                                 }
                             }
-                        }
-
-                        // Color picker
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("COLOR")
-                                .font(.system(size: 10, weight: .medium))
-                                .tracking(2)
-                                .foregroundColor(.white.opacity(0.4))
-                                .padding(.horizontal, 4)
-
-                            HStack(spacing: 10) {
-                                ForEach([
-                                    Color(red: 0.38, green: 0.65, blue: 0.98),
-                                    Color(red: 0.29, green: 0.87, blue: 0.50),
-                                    Color(red: 0.96, green: 0.45, blue: 0.71),
-                                    Color(red: 0.68, green: 0.45, blue: 0.98),
-                                    Color(red: 1.0, green: 0.42, blue: 0.16),
-                                    Color(red: 0.98, green: 0.85, blue: 0.35),
-                                    Color.black,
-                                    Color.white
-                                ], id: \.self) { color in
-                                    Button {
-                                        selectedColor = color
-                                        Haptics.light()
-                                    } label: {
-                                        Circle()
-                                            .fill(color)
-                                            .frame(width: 32, height: 32)
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(selectedColor == color
-                                                            ? Color.white.opacity(0.8)
-                                                            : Color.clear, lineWidth: 2)
-                                            )
-                                    }
-                                }
-                                Spacer()
-                            }
-                        }
-
-                        // Next billing date
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("NEXT BILLING DATE")
-                                .font(.system(size: 10, weight: .medium))
-                                .tracking(2)
-                                .foregroundColor(.white.opacity(0.4))
-                                .padding(.horizontal, 4)
-
-                            DatePicker("", selection: $nextBilling, displayedComponents: .date)
-                                .datePickerStyle(.compact)
-                                .labelsHidden()
-                                .tint(Color(red: 1.0, green: 0.42, blue: 0.16))
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .fill(Color.white.opacity(0.06))
-                                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
-                                )
                         }
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 32)
                 }
 
+                // Add button
                 Button {
-                    guard !name.isEmpty, priceDouble > 0 else { return }
+                    guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                     Haptics.medium()
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "MMM d"
-                    let billing = formatter.string(from: nextBilling)
-                    let newSub = RecurringSubscription(
-                        name: name,
-                        plan: plan.isEmpty ? nil : plan,
-                        price: priceDouble,
-                        iconName: selectedIcon,
+
+                    let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let cleanPlan = plan.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    let sub = RecurringSubscription(
+                        name: cleanName,
+                        plan: cleanPlan.isEmpty ? nil : cleanPlan,
+                        price: 0,
+                        iconName: "creditcard.fill",
                         iconColor: .white,
-                        bgColor: selectedColor,
-                        nextBilling: billing
+                        bgColor: accent,
+                        nextBilling: nextBillingString
                     )
-                    data.addSubscription(newSub)
+
+                    data.subscriptions.append(sub)
                     dismiss()
                 } label: {
                     Text("Add Subscription")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
                         .background(
                             RoundedRectangle(cornerRadius: 18)
-                                .fill(
-                                    name.isEmpty || priceDouble == 0
-                                    ? LinearGradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    : LinearGradient(colors: [Color(red: 1.0, green: 0.53, blue: 0.25), Color(red: 1.0, green: 0.35, blue: 0.10)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                )
-                                .shadow(color: name.isEmpty || priceDouble == 0 ? .clear : Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.4), radius: 12, y: 4)
+                                .fill(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.white.opacity(0.08) : accent)
+                                .shadow(color: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .clear : accent.opacity(0.3), radius: 12, y: 4)
                         )
                 }
-                .disabled(name.isEmpty || priceDouble == 0)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 48)
             }
@@ -238,7 +202,7 @@ struct AddRecurringView: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
-    private func inputField(label: String, text: Binding<String>, placeholder: String, keyboard: UIKeyboardType = .default) -> some View {
+    private func inputField(label: String, text: Binding<String>, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
                 .font(.system(size: 10, weight: .medium))
@@ -249,8 +213,7 @@ struct AddRecurringView: View {
             TextField(placeholder, text: text)
                 .font(.system(size: 15, weight: .regular))
                 .foregroundColor(.white)
-                .tint(Color(red: 1.0, green: 0.42, blue: 0.16))
-                .keyboardType(keyboard)
+                .tint(accent)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .background(
@@ -265,4 +228,5 @@ struct AddRecurringView: View {
 #Preview {
     AddRecurringView()
         .preferredColorScheme(.dark)
+        .environment(TransactionData.shared)
 }

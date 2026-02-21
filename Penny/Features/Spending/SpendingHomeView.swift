@@ -6,7 +6,7 @@ struct SpendingHomeView: View {
     @State private var showTransactions = false
     @State private var showRecurring = false
 
-    private var data = TransactionData.shared
+    @Environment(TransactionData.self) private var data
 
     var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -21,12 +21,9 @@ struct SpendingHomeView: View {
         return f.string(from: Date())
     }
 
+    // Now pulls from your real recurring subscriptions instead of hardcoded values
     var upcomingRecurring: [RecurringSubscription] {
-        [
-            RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: "May 12"),
-            RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: "May 15"),
-            RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: "May 5"),
-        ]
+        Array(data.subscriptions.prefix(3))
     }
 
     var spendingInsight: String {
@@ -120,11 +117,14 @@ struct SpendingHomeView: View {
                 Text(greeting)
                     .font(.system(size: 26, weight: .light, design: .serif))
                     .foregroundColor(.white)
+
                 Text(todayString)
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(.white.opacity(0.4))
             }
+
             Spacer()
+
             Button {
                 Haptics.medium()
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -159,8 +159,12 @@ struct SpendingHomeView: View {
                     .trim(from: 0, to: min(CGFloat(data.dailySpent / data.dailyBudget), 1.0))
                     .stroke(
                         LinearGradient(
-                            colors: [Color(red: 1.0, green: 0.42, blue: 0.16), Color(red: 1.0, green: 0.6, blue: 0.36)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
+                            colors: [
+                                Color(red: 1.0, green: 0.42, blue: 0.16),
+                                Color(red: 1.0, green: 0.6, blue: 0.36)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         ),
                         style: StrokeStyle(lineWidth: 8, lineCap: .round)
                     )
@@ -193,14 +197,22 @@ struct SpendingHomeView: View {
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color.white.opacity(0.06))
                             .frame(height: 6)
+
                         RoundedRectangle(cornerRadius: 4)
                             .fill(
                                 LinearGradient(
-                                    colors: [Color(red: 1.0, green: 0.42, blue: 0.16), Color(red: 1.0, green: 0.6, blue: 0.36)],
-                                    startPoint: .leading, endPoint: .trailing
+                                    colors: [
+                                        Color(red: 1.0, green: 0.42, blue: 0.16),
+                                        Color(red: 1.0, green: 0.6, blue: 0.36)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
                                 )
                             )
-                            .frame(width: geo.size.width * min(CGFloat(data.dailySpent / data.dailyBudget), 1.0), height: 6)
+                            .frame(
+                                width: geo.size.width * min(CGFloat(data.dailySpent / data.dailyBudget), 1.0),
+                                height: 6
+                            )
                     }
                 }
                 .frame(height: 6)
@@ -209,7 +221,9 @@ struct SpendingHomeView: View {
                     Text("$\(String(format: "%.2f", data.dailySpent)) spent")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundColor(.white.opacity(0.4))
+
                     Spacer()
+
                     Text("of $\(String(format: "%.0f", data.dailyBudget))")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundColor(.white.opacity(0.25))
@@ -233,6 +247,7 @@ struct SpendingHomeView: View {
                     .fill(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.15))
                     .overlay(Circle().stroke(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.25), lineWidth: 1))
                     .frame(width: 36, height: 36)
+
                 Image(systemName: "lightbulb.fill")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
@@ -262,9 +277,11 @@ struct SpendingHomeView: View {
                         Circle()
                             .fill(category.color)
                             .frame(width: 6, height: 6)
+
                         Text(category.name)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.8))
+
                         Text("$\(String(format: "%.0f", category.amount))")
                             .font(.system(size: 12, weight: .regular, design: .serif))
                             .foregroundColor(.white.opacity(0.4))
@@ -289,7 +306,9 @@ struct SpendingHomeView: View {
                 Text("Upcoming Bills")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
+
                 Spacer()
+
                 Button {
                     showRecurring = true
                     Haptics.light()
@@ -298,6 +317,7 @@ struct SpendingHomeView: View {
                         Text("View All")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
@@ -309,14 +329,23 @@ struct SpendingHomeView: View {
                 ForEach(upcomingRecurring) { sub in
                     HStack(spacing: 14) {
                         RoundedRectangle(cornerRadius: 10)
-                            .fill(sub.bgColor)
+                            .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
                             .frame(width: 36, height: 36)
-                            .overlay(recurringIcon(for: sub.iconName, color: sub.iconColor))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                            .overlay(
+                                BrandLogoView(
+                                    name: sub.name,
+                                    size: 36,
+                                    fallbackIcon: sub.iconName,
+                                    fallbackColor: sub.iconColor
+                                )
+                            )
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(sub.name)
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.white)
+
                             Text(sub.nextBilling)
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundColor(.white.opacity(0.4))
@@ -351,7 +380,9 @@ struct SpendingHomeView: View {
                 Text("Recent Transactions")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
+
                 Spacer()
+
                 Button {
                     showTransactions = true
                     Haptics.light()
@@ -360,6 +391,7 @@ struct SpendingHomeView: View {
                         Text("View All")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
@@ -370,20 +402,24 @@ struct SpendingHomeView: View {
             VStack(spacing: 8) {
                 ForEach(data.recentTransactions) { tx in
                     HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(tx.bgColor)
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(tx.borderColor, lineWidth: 1))
-                                .frame(width: 40, height: 40)
-                            Image(systemName: tx.icon)
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(tx.iconColor)
-                        }
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(tx.borderColor, lineWidth: 1))
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                BrandLogoView(
+                                    name: tx.title,
+                                    size: 40,
+                                    fallbackIcon: tx.icon,
+                                    fallbackColor: tx.iconColor
+                                )
+                            )
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(tx.title)
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.white)
+
                             Text(tx.subtitle)
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundColor(.white.opacity(0.4))
@@ -395,6 +431,7 @@ struct SpendingHomeView: View {
                             Text(tx.amount)
                                 .font(.system(size: 14, weight: .regular, design: .serif))
                                 .foregroundColor(.white)
+
                             if tx.isImpulse {
                                 Text("impulse")
                                     .font(.system(size: 9, weight: .medium))
@@ -421,22 +458,6 @@ struct SpendingHomeView: View {
             TransactionsView()
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
-        }
-    }
-
-    @ViewBuilder
-    private func recurringIcon(for name: String, color: Color) -> some View {
-        switch name {
-        case "netflix":
-            Text("N").font(.system(size: 16, weight: .black, design: .serif)).foregroundColor(.red)
-        case "spotify":
-            Image(systemName: "music.note").font(.system(size: 14, weight: .medium)).foregroundColor(color)
-        case "notion":
-            Text("N").font(.system(size: 14, weight: .semibold)).foregroundColor(.black)
-        case "youtube":
-            Image(systemName: "play.rectangle.fill").font(.system(size: 14, weight: .medium)).foregroundColor(color)
-        default:
-            Image(systemName: name).font(.system(size: 14, weight: .medium)).foregroundColor(color)
         }
     }
 }
