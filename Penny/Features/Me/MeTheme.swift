@@ -36,3 +36,5 @@ struct MeAchievement: Identifiable {
     let unlocked: Bool
     var gradientColors: [Color] = []
 }
+    
+    

@@ -248,21 +248,20 @@ class TransactionData {
             let sortedTransactions = group.transactions
                 .enumerated()
                 .sorted { lhs, rhs in
-                    let lhsTime = parsedMinutesSinceMidnight(lhs.element.time)
-                    let rhsTime = parsedMinutesSinceMidnight(rhs.element.time)
+                    let lhsSort = timeSortKey(lhs.element.time)
+                    let rhsSort = timeSortKey(rhs.element.time)
 
-                    switch (lhsTime, rhsTime) {
-                    case let (l?, r?):
-                        if l != r { return l > r } // latest time first
-                    case (_?, nil):
-                        return true // known clock times before labels like "Auto-Pay"
-                    case (nil, _?):
-                        return false
-                    case (nil, nil):
-                        break
+                    if lhsSort.rank != rhsSort.rank {
+                        return lhsSort.rank < rhsSort.rank
                     }
 
-                    return lhs.offset < rhs.offset // stable order for ties/unparseable times
+                    if let lMinute = lhsSort.minuteOfDay,
+                       let rMinute = rhsSort.minuteOfDay,
+                       lMinute != rMinute {
+                        return lMinute > rMinute // latest real clock time first
+                    }
+
+                    return lhs.offset < rhs.offset // stable order for non-time placeholders
                 }
                 .map(\.element)
 
@@ -283,6 +282,16 @@ class TransactionData {
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)
         guard let hour = components.hour, let minute = components.minute else { return nil }
         return (hour * 60) + minute
+    }
+
+    private static func timeSortKey(_ time: String) -> (rank: Int, minuteOfDay: Int?) {
+        if let minute = parsedMinutesSinceMidnight(time) {
+            return (0, minute) // exact clock times first
+        }
+        if time.caseInsensitiveCompare("Auto-Pay") == .orderedSame {
+            return (2, nil) // recurring placeholders last within a day
+        }
+        return (1, nil) // other placeholders like "Added"
     }
 
     private static func groupsSortedChronologically(_ groups: [SpendingTransactionGroup]) -> [SpendingTransactionGroup] {

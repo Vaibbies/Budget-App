@@ -2,7 +2,6 @@ import SwiftUI
 
 // MARK: - Profile Header
 struct MeProfileHeader: View {
-    // ✅ MUST match SettingsView keys
     @AppStorage("penny.profile.name") private var storedName: String = "Alex Rivers"
     @AppStorage("penny.profile.email") private var storedEmail: String = "alex.r@protonmail.com"
 

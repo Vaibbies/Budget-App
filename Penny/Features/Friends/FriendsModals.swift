@@ -73,7 +73,6 @@ struct SettleUpModal: View {
             }
             .padding(.top, 8)
         }
-        .padding(24)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(
             Color(red: 0.07, green: 0.07, blue: 0.09)
@@ -87,50 +86,99 @@ struct SettleUpModal: View {
 struct AddFriendModal: View {
     @Binding var isPresented: Bool
     @State private var emailText = ""
+    @FocusState private var isInputFocused: Bool
+
+    private var trimmedInput: String { emailText.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canSend: Bool { !trimmedInput.isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Add Friend")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.white)
+        ZStack {
+            Color.clear
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { isInputFocused = false }
 
-            TextField("Email or username", text: $emailText)
-                .foregroundColor(.white)
-                .padding()
-                .frame(height: 48)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.white.opacity(0.05))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                        )
-                )
-
-            Button(action: {
-                isPresented = false
-            }) {
-                Text("Send Request")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
+            VStack(alignment: .leading, spacing: 18) {
+                Capsule()
+                    .fill(Color.white.opacity(0.25))
+                    .frame(width: 36, height: 5)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .padding(.bottom, 4)
+
+                Text("Add Friend")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.white)
+
+                Text("Send an invite by email or username.")
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.6))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("CONTACT")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.4)
+                        .foregroundColor(.white.opacity(0.45))
+
+                    HStack(spacing: 10) {
+                        Image(systemName: "at")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.55))
+                            .frame(width: 18)
+
+                        TextField("name@email.com or @username", text: $emailText)
+                            .focused($isInputFocused)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.emailAddress)
+                            .submitLabel(.send)
+                            .foregroundColor(.white)
+                            .onSubmit { sendRequest() }
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 50)
                     .background(
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 1.0, green: 0.55, blue: 0.36),
-                                        Color(red: 1.0, green: 0.42, blue: 0.16)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(Color.white.opacity(0.06))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(isInputFocused ? Color.white.opacity(0.35) : Color.white.opacity(0.1), lineWidth: 1)
                             )
                     )
-            }
+                }
 
-            Spacer(minLength: 0)
+                Button(action: sendRequest) {
+                    Text("Send Request")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white.opacity(canSend ? 1 : 0.55))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    canSend
+                                    ? LinearGradient(
+                                        colors: [
+                                            Color(red: 1.0, green: 0.55, blue: 0.36),
+                                            Color(red: 1.0, green: 0.42, blue: 0.16)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                    : LinearGradient(
+                                        colors: [Color.white.opacity(0.12), Color.white.opacity(0.1)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .padding(.top, 4)
+
+                Spacer(minLength: 0)
+            }
+            .padding(24)
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -139,6 +187,12 @@ struct AddFriendModal: View {
                 .opacity(0.98)
                 .ignoresSafeArea()
         )
+    }
+
+    private func sendRequest() {
+        guard canSend else { return }
+        isInputFocused = false
+        isPresented = false
     }
 }
 

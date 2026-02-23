@@ -76,6 +76,27 @@ struct FriendsData {
             type: .owe
         )
     ]
+
+    static let sentRequests: [PendingRequest] = [
+        PendingRequest(
+            id: 101,
+            name: "Ethan Park",
+            seed: "Ethan",
+            description: "BRUNCH AT TERRACE",
+            time: "Today",
+            amount: 28.00,
+            type: .request
+        ),
+        PendingRequest(
+            id: 102,
+            name: "Nina Roy",
+            seed: "Nina",
+            description: "RIDESHARE TO AIRPORT",
+            time: "Thu",
+            amount: 16.75,
+            type: .request
+        )
+    ]
     
     static let sharedExpenses: [SharedExpense] = [
         SharedExpense(

@@ -25,14 +25,12 @@ struct IconButton: View {
 }
 
 struct FriendsHeader: View {
-    let onMenuClick: () -> Void
     let onAddClick: () -> Void
     
     var body: some View {
         HStack {
-            IconButton(icon: "line.3.horizontal", action: onMenuClick)
-            
-            Spacer()
+            Color.clear
+                .frame(width: 40, height: 40)
             
             Text("FRIENDS")
                 .font(.system(size: 12, weight: .medium))

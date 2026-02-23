@@ -202,7 +202,9 @@ struct TransactionsView: View {
 
     // MARK: - Row
     private func fullTransactionRow(_ transaction: SpendingTransaction) -> some View {
-        HStack(spacing: 16) {
+        let isSubscription = transaction.category == .subscriptions
+
+        return HStack(spacing: 16) {
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
                 .frame(width: 48, height: 48)
@@ -248,6 +250,15 @@ struct TransactionsView: View {
         .background(TransactionsTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(TransactionsTheme.line, lineWidth: 1))
+        .overlay(alignment: .leading) {
+            if isSubscription {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(TransactionsTheme.accent.opacity(0.85))
+                    .frame(width: 3)
+                    .padding(.vertical, 10)
+                    .padding(.leading, 8)
+            }
+        }
         .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
     }
 }
