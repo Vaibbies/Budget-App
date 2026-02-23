@@ -58,14 +58,12 @@ struct FriendsView: View {
                 MenuModal(isPresented: $showMenuModal)
             }
         }
-        // ✅ Halfway sheet (medium) + can drag to large
         .sheet(isPresented: $showAddFriendModal) {
             AddFriendModal(isPresented: $showAddFriendModal)
                 .presentationCornerRadius(28)
                 .presentationDragIndicator(.visible)
                 .presentationDetents([.medium, .large], selection: .constant(.medium))
         }
-        // ✅ Halfway sheet (medium) + can drag to large
         .sheet(isPresented: $showSettleModal) {
             SettleUpModal(isPresented: $showSettleModal)
                 .presentationCornerRadius(28)

@@ -17,8 +17,34 @@ enum BillingFrequency: String, CaseIterable {
         }
     }
 
+    var storageKey: String {
+        switch self {
+        case .weekly: return "weekly"
+        case .monthly: return "monthly"
+        case .quarterly: return "quarterly"
+        case .biannual: return "biannual"
+        case .annual: return "annual"
+        }
+    }
+
+    func advanced(from date: Date) -> Date {
+        let calendar = Calendar.current
+        switch self {
+        case .weekly:
+            return calendar.date(byAdding: .day, value: 7, to: date) ?? date
+        case .monthly:
+            return calendar.date(byAdding: .month, value: 1, to: date) ?? date
+        case .quarterly:
+            return calendar.date(byAdding: .month, value: 3, to: date) ?? date
+        case .biannual:
+            return calendar.date(byAdding: .month, value: 6, to: date) ?? date
+        case .annual:
+            return calendar.date(byAdding: .year, value: 1, to: date) ?? date
+        }
+    }
+
     var nextDate: Date {
-        Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()
+        advanced(from: Date())
     }
 
     var icon: String {
@@ -38,20 +64,27 @@ struct QuickAddRecurringView: View {
 
     let prefillName: String
     let prefillPrice: Double
+    let startDate: Date
 
     @State private var name: String
     @State private var plan = ""
     @State private var selectedFrequency: BillingFrequency = .monthly
-    @State private var selectedColor = Color(red: 0.35, green: 0.98, blue: 0.85)
 
-    init(prefillName: String, prefillPrice: Double) {
+    private let accent = Color(red: 0.35, green: 0.98, blue: 0.85)
+
+    init(prefillName: String, prefillPrice: Double, startDate: Date = Date()) {
         self.prefillName = prefillName
         self.prefillPrice = prefillPrice
+        self.startDate = startDate
         _name = State(initialValue: prefillName)
     }
 
     private var nextBillingDate: Date {
-        selectedFrequency.nextDate
+        Self.nextOccurrenceDate(
+            anchorDate: startDate,
+            frequency: selectedFrequency,
+            after: Date()
+        )
     }
 
     private var nextBillingString: String {
@@ -70,7 +103,7 @@ struct QuickAddRecurringView: View {
         ZStack {
             Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
             RadialGradient(
-                colors: [Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.3), Color.clear],
+                colors: [accent.opacity(0.3), Color.clear],
                 center: .init(x: 0.5, y: 0.0),
                 startRadius: 0, endRadius: 400
             )
@@ -139,7 +172,7 @@ struct QuickAddRecurringView: View {
                                 }
                                 Text("Next: \(nextBillingString)")
                                     .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.7))
+                                    .foregroundColor(accent.opacity(0.7))
                             }
                         }
                         .padding(20)
@@ -173,7 +206,7 @@ struct QuickAddRecurringView: View {
                                             Image(systemName: freq.icon)
                                                 .font(.system(size: 14, weight: .medium))
                                                 .foregroundColor(selectedFrequency == freq
-                                                    ? Color(red: 0.35, green: 0.98, blue: 0.85)
+                                                    ? accent
                                                     : .white.opacity(0.4))
                                                 .frame(width: 20)
 
@@ -186,11 +219,11 @@ struct QuickAddRecurringView: View {
                                             if selectedFrequency == freq {
                                                 Text(nextBillingFull)
                                                     .font(.system(size: 11, weight: .medium))
-                                                    .foregroundColor(Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.8))
+                                                    .foregroundColor(accent.opacity(0.8))
 
                                                 Image(systemName: "checkmark")
                                                     .font(.system(size: 11, weight: .semibold))
-                                                    .foregroundColor(Color(red: 0.35, green: 0.98, blue: 0.85))
+                                                    .foregroundColor(accent)
                                             }
                                         }
                                         .padding(.horizontal, 16)
@@ -198,12 +231,12 @@ struct QuickAddRecurringView: View {
                                         .background(
                                             RoundedRectangle(cornerRadius: 14)
                                                 .fill(selectedFrequency == freq
-                                                    ? Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.08)
+                                                    ? accent.opacity(0.08)
                                                     : Color.white.opacity(0.05))
                                                 .overlay(
                                                     RoundedRectangle(cornerRadius: 14)
                                                         .stroke(selectedFrequency == freq
-                                                            ? Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.3)
+                                                            ? accent.opacity(0.3)
                                                             : Color.white.opacity(0.06),
                                                             lineWidth: 1
                                                         )
@@ -211,42 +244,6 @@ struct QuickAddRecurringView: View {
                                         )
                                     }
                                 }
-                            }
-                        }
-
-                        // Color picker
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("COLOR")
-                                .font(.system(size: 10, weight: .medium))
-                                .tracking(2)
-                                .foregroundColor(.white.opacity(0.4))
-                                .padding(.horizontal, 4)
-
-                            HStack(spacing: 10) {
-                                ForEach([
-                                    Color(red: 0.35, green: 0.98, blue: 0.85),
-                                    Color(red: 0.38, green: 0.65, blue: 0.98),
-                                    Color(red: 0.29, green: 0.87, blue: 0.50),
-                                    Color(red: 0.96, green: 0.45, blue: 0.71),
-                                    Color(red: 0.68, green: 0.45, blue: 0.98),
-                                    Color(red: 1.0, green: 0.42, blue: 0.16),
-                                    Color.black,
-                                    Color.white
-                                ], id: \.self) { color in
-                                    Button {
-                                        selectedColor = color
-                                        Haptics.light()
-                                    } label: {
-                                        Circle()
-                                            .fill(color)
-                                            .frame(width: 32, height: 32)
-                                            .overlay(
-                                                Circle()
-                                                    .stroke(selectedColor == color ? Color.white.opacity(0.8) : Color.clear, lineWidth: 2)
-                                            )
-                                    }
-                                }
-                                Spacer()
                             }
                         }
                     }
@@ -263,10 +260,13 @@ struct QuickAddRecurringView: View {
                         price: prefillPrice,
                         iconName: "music.note",
                         iconColor: .white,
-                        bgColor: selectedColor,
-                        nextBilling: nextBillingString
+                        bgColor: accent,
+                        nextBilling: nextBillingString,
+                        frequencyDays: selectedFrequency.days,
+                        frequencyKey: selectedFrequency.storageKey,
+                        nextBillingEpoch: nextBillingDate.timeIntervalSince1970
                     )
-                    data.subscriptions.append(sub)
+                    data.addSubscription(sub, logInitialTransaction: false)
                     dismiss()
                 } label: {
                     Text("Add to Recurring")
@@ -276,8 +276,8 @@ struct QuickAddRecurringView: View {
                         .frame(height: 56)
                         .background(
                             RoundedRectangle(cornerRadius: 18)
-                                .fill(Color(red: 0.35, green: 0.98, blue: 0.85))
-                                .shadow(color: Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.3), radius: 12, y: 4)
+                                .fill(accent)
+                                .shadow(color: accent.opacity(0.3), radius: 12, y: 4)
                         )
                 }
                 .padding(.horizontal, 24)
@@ -285,6 +285,22 @@ struct QuickAddRecurringView: View {
             }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    private static func nextOccurrenceDate(anchorDate: Date, frequency: BillingFrequency, after referenceDate: Date) -> Date {
+        let calendar = Calendar.current
+        let anchor = calendar.startOfDay(for: anchorDate)
+        let reference = calendar.startOfDay(for: referenceDate)
+
+        if anchor > reference {
+            return frequency.advanced(from: anchor)
+        }
+
+        var next = frequency.advanced(from: anchor)
+        while next <= reference {
+            next = frequency.advanced(from: next)
+        }
+        return next
     }
 
     private func inputField(label: String, text: Binding<String>, placeholder: String) -> some View {

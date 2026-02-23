@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct AddRecurringView: View {
     @Environment(\.dismiss) var dismiss
@@ -6,9 +7,22 @@ struct AddRecurringView: View {
 
     @State private var name = ""
     @State private var plan = ""
+    @State private var priceText = ""
     @State private var selectedFrequency: BillingFrequency = .monthly
 
     private let accent = Color(red: 0.35, green: 0.98, blue: 0.85)
+
+    private var enteredPrice: Double {
+        let cleaned = priceText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        return Double(cleaned) ?? 0
+    }
+
+    private var isSaveEnabled: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && enteredPrice > 0
+    }
 
     private var nextBillingString: String {
         let fmt = DateFormatter()
@@ -92,6 +106,11 @@ struct AddRecurringView: View {
                             Spacer()
 
                             VStack(alignment: .trailing, spacing: 2) {
+                                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                                    Text("$\(String(format: "%.2f", enteredPrice))")
+                                        .font(.system(size: 20, weight: .light, design: .serif))
+                                        .foregroundColor(.white)
+                                }
                                 Text("Next: \(nextBillingString)")
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundColor(accent.opacity(0.7))
@@ -107,6 +126,7 @@ struct AddRecurringView: View {
                         // Fields
                         inputField(label: "SERVICE NAME", text: $name, placeholder: "Netflix, Spotify...")
                         inputField(label: "PLAN DESCRIPTION (OPTIONAL)", text: $plan, placeholder: "e.g. Premium, Family, Student...")
+                        amountField
 
                         // Frequency picker
                         VStack(alignment: .leading, spacing: 10) {
@@ -164,7 +184,7 @@ struct AddRecurringView: View {
 
                 // Add button
                 Button {
-                    guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                    guard isSaveEnabled else { return }
                     Haptics.medium()
 
                     let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -173,14 +193,17 @@ struct AddRecurringView: View {
                     let sub = RecurringSubscription(
                         name: cleanName,
                         plan: cleanPlan.isEmpty ? nil : cleanPlan,
-                        price: 0,
+                        price: enteredPrice,
                         iconName: "creditcard.fill",
                         iconColor: .white,
                         bgColor: accent,
-                        nextBilling: nextBillingString
+                        nextBilling: nextBillingString,
+                        frequencyDays: selectedFrequency.days,
+                        frequencyKey: selectedFrequency.storageKey,
+                        nextBillingEpoch: selectedFrequency.nextDate.timeIntervalSince1970
                     )
 
-                    data.subscriptions.append(sub)
+                    data.addSubscription(sub, logInitialTransaction: true)
                     dismiss()
                 } label: {
                     Text("Add Subscription")
@@ -190,16 +213,26 @@ struct AddRecurringView: View {
                         .frame(height: 56)
                         .background(
                             RoundedRectangle(cornerRadius: 18)
-                                .fill(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.white.opacity(0.08) : accent)
-                                .shadow(color: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .clear : accent.opacity(0.3), radius: 12, y: 4)
+                                .fill(isSaveEnabled ? accent : Color.white.opacity(0.08))
+                                .shadow(color: isSaveEnabled ? accent.opacity(0.3) : .clear, radius: 12, y: 4)
                         )
                 }
-                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!isSaveEnabled)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 48)
             }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                UIApplication.shared.sendAction(
+                    #selector(UIResponder.resignFirstResponder),
+                    to: nil,
+                    from: nil,
+                    for: nil
+                )
+            }
+        )
     }
 
     private func inputField(label: String, text: Binding<String>, placeholder: String) -> some View {
@@ -221,6 +254,35 @@ struct AddRecurringView: View {
                         .fill(Color.white.opacity(0.06))
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
                 )
+        }
+    }
+
+    private var amountField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("PRICE")
+                .font(.system(size: 10, weight: .medium))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+                .padding(.horizontal, 4)
+
+            HStack(spacing: 10) {
+                Text("$")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+
+                TextField("0.00", text: $priceText)
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.white)
+                    .tint(accent)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+            )
         }
     }
 }

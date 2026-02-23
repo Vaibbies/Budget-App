@@ -204,7 +204,8 @@ struct AddTransactionView: View {
         .sheet(isPresented: $showAddRecurring, onDismiss: { dismiss() }) {
             QuickAddRecurringView(
                 prefillName: merchantName,
-                prefillPrice: amountDouble
+                prefillPrice: amountDouble,
+                startDate: selectedDate
             )
             .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)

@@ -113,6 +113,9 @@ struct RecurringSubscription: Identifiable, Codable {
     let iconColorHex: String
     let bgColorHex: String
     let nextBilling: String
+    let frequencyDays: Int?
+    let frequencyKey: String?
+    let nextBillingEpoch: TimeInterval?
 
     init(
         id: UUID = UUID(),
@@ -122,7 +125,10 @@ struct RecurringSubscription: Identifiable, Codable {
         iconName: String,
         iconColor: Color,
         bgColor: Color,
-        nextBilling: String
+        nextBilling: String,
+        frequencyDays: Int? = nil,
+        frequencyKey: String? = nil,
+        nextBillingEpoch: TimeInterval? = nil
     ) {
         self.id = id
         self.name = name
@@ -132,6 +138,9 @@ struct RecurringSubscription: Identifiable, Codable {
         self.iconColorHex = iconColor.toHex()
         self.bgColorHex = bgColor.toHex()
         self.nextBilling = nextBilling
+        self.frequencyDays = frequencyDays
+        self.frequencyKey = frequencyKey
+        self.nextBillingEpoch = nextBillingEpoch
     }
 
     var iconColor: Color { Color(hex: iconColorHex) ?? .white }
@@ -171,9 +180,20 @@ class TransactionData {
     private let groupsKey = "penny_transaction_groups"
     private let budgetKey = "penny_daily_budget"
     private let subscriptionsKey = "penny_recurring_subscriptions"
+    private var isNormalizingGroups = false
+    private var isSyncingRecurring = false
 
     var groups: [SpendingTransactionGroup] {
-        didSet { save() }
+        didSet {
+            if isNormalizingGroups {
+                save()
+                return
+            }
+
+            isNormalizingGroups = true
+            groups = Self.groupsWithTransactionsSortedByTime(groups)
+            isNormalizingGroups = false
+        }
     }
 
     var subscriptions: [RecurringSubscription] {
@@ -188,12 +208,14 @@ class TransactionData {
         let savedBudget = UserDefaults.standard.double(forKey: budgetKey)
         self.dailyBudget = savedBudget > 0 ? savedBudget : 170.0
 
+        let loadedGroups: [SpendingTransactionGroup]
         if let data = UserDefaults.standard.data(forKey: groupsKey),
            let decoded = try? JSONDecoder().decode([SpendingTransactionGroup].self, from: data) {
-            self.groups = decoded
+            loadedGroups = decoded
         } else {
-            self.groups = TransactionData.sampleGroups
+            loadedGroups = TransactionData.sampleGroups
         }
+        self.groups = Self.groupsWithTransactionsSortedByTime(loadedGroups)
 
         // ✅ per screenshot: if nothing saved yet, start EMPTY (not sampleSubscriptions)
         if let data = UserDefaults.standard.data(forKey: subscriptionsKey),
@@ -202,6 +224,8 @@ class TransactionData {
         } else {
             self.subscriptions = [] // empty instead of sampleSubscriptions
         }
+
+        syncRecurringTransactions()
     }
 
     private func save() {
@@ -216,15 +240,152 @@ class TransactionData {
         }
     }
 
+    private static func groupsWithTransactionsSortedByTime(_ groups: [SpendingTransactionGroup]) -> [SpendingTransactionGroup] {
+        groups.map { group in
+            let sortedTransactions = group.transactions
+                .enumerated()
+                .sorted { lhs, rhs in
+                    let lhsTime = parsedMinutesSinceMidnight(lhs.element.time)
+                    let rhsTime = parsedMinutesSinceMidnight(rhs.element.time)
+
+                    switch (lhsTime, rhsTime) {
+                    case let (l?, r?):
+                        if l != r { return l > r } // latest time first
+                    case (_?, nil):
+                        return true // known clock times before labels like "Auto-Pay"
+                    case (nil, _?):
+                        return false
+                    case (nil, nil):
+                        break
+                    }
+
+                    return lhs.offset < rhs.offset // stable order for ties/unparseable times
+                }
+                .map(\.element)
+
+            return SpendingTransactionGroup(
+                id: group.id,
+                title: group.title,
+                transactions: sortedTransactions
+            )
+        }
+    }
+
+    private static func parsedMinutesSinceMidnight(_ time: String) -> Int? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mm a"
+
+        guard let date = formatter.date(from: time) else { return nil }
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        guard let hour = components.hour, let minute = components.minute else { return nil }
+        return (hour * 60) + minute
+    }
+
     // MARK: - Add Subscription + Auto-log Transaction
-    func addSubscription(_ sub: RecurringSubscription) {
+    func addSubscription(_ sub: RecurringSubscription, logInitialTransaction: Bool = true) {
         // Add to recurring list
         subscriptions.append(sub)
 
+        guard logInitialTransaction else { return }
+
         // Auto-log as a transaction today
+        addRecurringTransaction(
+            for: sub,
+            on: Date(),
+            timeString: recurringTimeString(for: Date())
+        )
+    }
+
+    func syncRecurringTransactions() {
+        if isSyncingRecurring { return }
+        isSyncingRecurring = true
+        defer { isSyncingRecurring = false }
+
+        guard !subscriptions.isEmpty else { return }
+
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        var updated = subscriptions
+        var didMutateSubscriptions = false
+
+        for index in updated.indices {
+            guard let epoch = updated[index].nextBillingEpoch else { continue }
+            if updated[index].frequencyKey == nil && ((updated[index].frequencyDays ?? 0) <= 0) {
+                continue
+            }
+
+            var nextDate = Date(timeIntervalSince1970: epoch)
+            var addedAny = false
+
+            while calendar.startOfDay(for: nextDate) <= todayStart {
+                addRecurringTransaction(for: updated[index], on: nextDate, timeString: "Auto-Pay")
+                addedAny = true
+                nextDate = Self.advanceRecurringDate(
+                    current: nextDate,
+                    frequencyKey: updated[index].frequencyKey,
+                    fallbackDays: updated[index].frequencyDays
+                )
+            }
+
+            if addedAny {
+                didMutateSubscriptions = true
+                let nextBillingString = Self.billingDisplayString(for: nextDate)
+                updated[index] = RecurringSubscription(
+                    id: updated[index].id,
+                    name: updated[index].name,
+                    plan: updated[index].plan,
+                    price: updated[index].price,
+                    iconName: updated[index].iconName,
+                    iconColor: updated[index].iconColor,
+                    bgColor: updated[index].bgColor,
+                    nextBilling: nextBillingString,
+                    frequencyDays: updated[index].frequencyDays,
+                    frequencyKey: updated[index].frequencyKey,
+                    nextBillingEpoch: nextDate.timeIntervalSince1970
+                )
+            }
+        }
+
+        if didMutateSubscriptions {
+            subscriptions = updated
+        }
+    }
+
+    private static func billingDisplayString(for date: Date) -> String {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMM d"
+        return fmt.string(from: date)
+    }
+
+    private static func advanceRecurringDate(current: Date, frequencyKey: String?, fallbackDays: Int?) -> Date {
+        let calendar = Calendar.current
+
+        switch frequencyKey {
+        case "weekly":
+            return calendar.date(byAdding: .day, value: 7, to: current) ?? current
+        case "monthly":
+            return calendar.date(byAdding: .month, value: 1, to: current) ?? current
+        case "quarterly":
+            return calendar.date(byAdding: .month, value: 3, to: current) ?? current
+        case "biannual":
+            return calendar.date(byAdding: .month, value: 6, to: current) ?? current
+        case "annual":
+            return calendar.date(byAdding: .year, value: 1, to: current) ?? current
+        default:
+            let days = max(fallbackDays ?? 0, 1)
+            return calendar.date(byAdding: .day, value: days, to: current) ?? current.addingTimeInterval(Double(days) * 86_400)
+        }
+    }
+
+    private func recurringTimeString(for date: Date) -> String {
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "h:mm a"
-        let timeString = timeFormatter.string(from: Date())
+        return timeFormatter.string(from: date)
+    }
+
+    private func addRecurringTransaction(for sub: RecurringSubscription, on date: Date, timeString: String) {
+        let dayLabel = Self.dayLabel(for: date)
 
         let transaction = SpendingTransaction(
             icon: sub.iconName.contains(".") ? sub.iconName : "music.note",
@@ -239,18 +400,40 @@ class TransactionData {
             category: .subscriptions
         )
 
-        if let index = groups.firstIndex(where: { $0.title == "Today" }) {
+        if let index = groups.firstIndex(where: { $0.title == dayLabel }) {
             var updated = groups[index].transactions
             updated.insert(transaction, at: 0)
             groups[index] = SpendingTransactionGroup(
-                title: "Today",
+                title: groups[index].title,
                 transactions: updated
             )
         } else {
-            groups.insert(
-                SpendingTransactionGroup(title: "Today", transactions: [transaction]),
-                at: 0
-            )
+            let labelFormatter = DateFormatter()
+            labelFormatter.dateFormat = "EEEE, MMM d"
+            let insertIndex = groups.firstIndex(where: { group in
+                if group.title == "Today" { return false }
+                if group.title == "Yesterday" {
+                    return !Calendar.current.isDateInToday(date)
+                }
+                if let groupDate = labelFormatter.date(from: group.title) {
+                    return groupDate < date
+                }
+                return false
+            }) ?? groups.endIndex
+
+            groups.insert(SpendingTransactionGroup(title: dayLabel, transactions: [transaction]), at: insertIndex)
+        }
+    }
+
+    private static func dayLabel(for date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return "Today"
+        } else if Calendar.current.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            let fmt = DateFormatter()
+            fmt.dateFormat = "EEEE, MMM d"
+            return fmt.string(from: date)
         }
     }
 

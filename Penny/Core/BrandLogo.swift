@@ -520,6 +520,11 @@ let categoryFallbackIcons: [String: String] = [
 func brandLogoURL(for name: String) -> URL? {
     let key = name.lowercased().trimmingCharacters(in: .whitespaces)
 
+    // PRO matcher first (JSON bundle with expanded descriptors)
+    if let domain = MerchantMatcher.shared.domain(for: key) {
+        return URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=128")
+    }
+
     // Only look up known brands — no guessing
     if let domain = brandDomains[key] {
         return URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=128")

@@ -133,6 +133,9 @@ struct RecurringView: View {
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
         }
+        .onAppear {
+            data.syncRecurringTransactions()
+        }
     }
 
     // MARK: - Monthly Spend Card

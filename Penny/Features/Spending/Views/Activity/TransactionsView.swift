@@ -22,6 +22,7 @@ struct TransactionsView: View {
         let id = UUID()
         let transaction: SpendingTransaction
         let groupIndex: Int
+        let groupTitle: String
         let txIndex: Int
     }
 
@@ -53,6 +54,7 @@ struct TransactionsView: View {
                                             editingInfo = EditInfo(
                                                 transaction: transaction,
                                                 groupIndex: groupIndex,
+                                                groupTitle: group.title,
                                                 txIndex: txIndex
                                             )
                                         } label: {
@@ -93,10 +95,14 @@ struct TransactionsView: View {
             EditTransactionView(
                 transaction: info.transaction,
                 originalGroupIndex: info.groupIndex,
+                originalGroupTitle: info.groupTitle,
                 originalTxIndex: info.txIndex
             )
             .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
+        }
+        .onAppear {
+            data.syncRecurringTransactions()
         }
     }
 
@@ -251,7 +257,9 @@ struct EditTransactionView: View {
     @Environment(\.dismiss) var dismiss
     let transaction: SpendingTransaction
     let originalGroupIndex: Int
+    let originalGroupTitle: String
     let originalTxIndex: Int
+    let originalGroupDate: Date
 
     private var data = TransactionData.shared
 
@@ -262,26 +270,19 @@ struct EditTransactionView: View {
     @State private var isImpulse: Bool
     @State private var isListening = false
 
-    init(transaction: SpendingTransaction, originalGroupIndex: Int, originalTxIndex: Int) {
+    init(transaction: SpendingTransaction, originalGroupIndex: Int, originalGroupTitle: String, originalTxIndex: Int) {
         self.transaction = transaction
         self.originalGroupIndex = originalGroupIndex
+        self.originalGroupTitle = originalGroupTitle
         self.originalTxIndex = originalTxIndex
+        self.originalGroupDate = Self.resolveDate(fromGroupTitle: originalGroupTitle) ?? Date()
 
         _merchantName = State(initialValue: transaction.title)
         _amountString = State(initialValue: String(Int(transaction.amountValue * 100)))
         _selectedCategory = State(initialValue: transaction.category)
         _isImpulse = State(initialValue: transaction.isImpulse)
 
-        let groupTitle = TransactionData.shared.groups[originalGroupIndex].title
-        if groupTitle == "Today" {
-            _selectedDate = State(initialValue: Date())
-        } else if groupTitle == "Yesterday" {
-            _selectedDate = State(initialValue: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
-        } else {
-            let fmt = DateFormatter()
-            fmt.dateFormat = "EEEE, MMM d"
-            _selectedDate = State(initialValue: fmt.date(from: groupTitle) ?? Date())
-        }
+        _selectedDate = State(initialValue: self.originalGroupDate)
     }
 
     private var displayAmount: String {
@@ -487,14 +488,12 @@ struct EditTransactionView: View {
     private func saveExpense() {
         Haptics.medium()
 
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "h:mm a"
-        let timeString = Calendar.current.isDateInToday(selectedDate)
-            ? timeFormatter.string(from: Date())
-            : "Added"
-
+        // Capture original group title BEFORE we mutate groups,
+        // so we can detect "same group" and preserve position.
         let newDayLabel: String
-        if Calendar.current.isDateInToday(selectedDate) {
+        if Calendar.current.isDate(selectedDate, inSameDayAs: originalGroupDate) {
+            newDayLabel = originalGroupTitle
+        } else if Calendar.current.isDateInToday(selectedDate) {
             newDayLabel = "Today"
         } else if Calendar.current.isDateInYesterday(selectedDate) {
             newDayLabel = "Yesterday"
@@ -509,7 +508,7 @@ struct EditTransactionView: View {
             icon: selectedCategory.icon,
             title: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
             subtitle: selectedCategory.rawValue,
-            time: timeString,
+            time: transaction.time,
             amount: "-$\(String(format: "%.2f", amountDouble))",
             isImpulse: isImpulse,
             iconColor: selectedCategory.color,
@@ -530,10 +529,20 @@ struct EditTransactionView: View {
             )
         }
 
-        // Insert into correct group
+        // Insert into correct group (FIXED: preserve position if same group/date)
         if let existingIndex = data.groups.firstIndex(where: { $0.title == newDayLabel }) {
             var txns = data.groups[existingIndex].transactions
-            txns.insert(updated, at: 0)
+
+            // If we're staying in the same group (date unchanged), put it back where it was.
+            // Otherwise (moving to a different day), insert at top.
+            let insertAt: Int
+            if newDayLabel == originalGroupTitle {
+                insertAt = min(originalTxIndex, txns.count)
+            } else {
+                insertAt = 0
+            }
+
+            txns.insert(updated, at: insertAt)
             data.groups[existingIndex] = SpendingTransactionGroup(
                 title: data.groups[existingIndex].title,
                 transactions: txns
@@ -556,6 +565,49 @@ struct EditTransactionView: View {
         }
 
         dismiss()
+    }
+
+    private static func resolveDate(fromGroupTitle title: String) -> Date? {
+        let calendar = Calendar.current
+        let now = Date()
+
+        if title == "Today" { return now }
+        if title == "Yesterday" {
+            return calendar.date(byAdding: .day, value: -1, to: now)
+        }
+
+        let absoluteFormatter = DateFormatter()
+        absoluteFormatter.locale = Locale(identifier: "en_US_POSIX")
+        absoluteFormatter.dateFormat = "EEEE, MMM d"
+        if let parsed = absoluteFormatter.date(from: title) {
+            return parsed
+        }
+
+        let weekdayMap: [String: Int] = [
+            "Sunday": 1,
+            "Monday": 2,
+            "Tuesday": 3,
+            "Wednesday": 4,
+            "Thursday": 5,
+            "Friday": 6,
+            "Saturday": 7
+        ]
+
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isLastPrefix = normalized.hasPrefix("Last ")
+        let weekdayName = isLastPrefix
+            ? String(normalized.dropFirst("Last ".count))
+            : normalized
+
+        guard let targetWeekday = weekdayMap[weekdayName] else { return nil }
+        let todayWeekday = calendar.component(.weekday, from: now)
+
+        var daysBack = (todayWeekday - targetWeekday + 7) % 7
+        if isLastPrefix || daysBack == 0 {
+            daysBack += 7
+        }
+
+        return calendar.date(byAdding: .day, value: -daysBack, to: now)
     }
 }
 
