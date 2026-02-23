@@ -580,7 +580,23 @@ struct EditTransactionView: View {
         absoluteFormatter.locale = Locale(identifier: "en_US_POSIX")
         absoluteFormatter.dateFormat = "EEEE, MMM d"
         if let parsed = absoluteFormatter.date(from: title) {
-            return parsed
+            // Formatter without year defaults to 2000. Rebuild with a sensible year.
+            let parsedMonth = calendar.component(.month, from: parsed)
+            let parsedDay = calendar.component(.day, from: parsed)
+            let currentYear = calendar.component(.year, from: now)
+
+            var components = DateComponents()
+            components.year = currentYear
+            components.month = parsedMonth
+            components.day = parsedDay
+
+            if let candidate = calendar.date(from: components) {
+                // If this lands in the future, treat it as previous year.
+                if candidate > now, let previousYear = calendar.date(byAdding: .year, value: -1, to: candidate) {
+                    return previousYear
+                }
+                return candidate
+            }
         }
 
         let weekdayMap: [String: Int] = [

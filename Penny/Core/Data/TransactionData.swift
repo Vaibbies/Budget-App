@@ -191,7 +191,8 @@ class TransactionData {
             }
 
             isNormalizingGroups = true
-            groups = Self.groupsWithTransactionsSortedByTime(groups)
+            let txSorted = Self.groupsWithTransactionsSortedByTime(groups)
+            groups = Self.groupsSortedChronologically(txSorted)
             isNormalizingGroups = false
         }
     }
@@ -215,7 +216,9 @@ class TransactionData {
         } else {
             loadedGroups = TransactionData.sampleGroups
         }
-        self.groups = Self.groupsWithTransactionsSortedByTime(loadedGroups)
+        self.groups = Self.groupsSortedChronologically(
+            Self.groupsWithTransactionsSortedByTime(loadedGroups)
+        )
 
         // ✅ per screenshot: if nothing saved yet, start EMPTY (not sampleSubscriptions)
         if let data = UserDefaults.standard.data(forKey: subscriptionsKey),
@@ -282,18 +285,97 @@ class TransactionData {
         return (hour * 60) + minute
     }
 
+    private static func groupsSortedChronologically(_ groups: [SpendingTransactionGroup]) -> [SpendingTransactionGroup] {
+        let now = Date()
+        return groups
+            .enumerated()
+            .sorted { lhs, rhs in
+                let lhsDate = resolvedDate(forGroupTitle: lhs.element.title, now: now)
+                let rhsDate = resolvedDate(forGroupTitle: rhs.element.title, now: now)
+
+                switch (lhsDate, rhsDate) {
+                case let (l?, r?):
+                    if l != r { return l > r } // newest day first
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    break
+                }
+
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
+
+    private static func resolvedDate(forGroupTitle title: String, now: Date) -> Date? {
+        let calendar = Calendar.current
+
+        if title == "Today" { return calendar.startOfDay(for: now) }
+        if title == "Yesterday" {
+            return calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: now))
+        }
+
+        // Explicit date label used by this app: "EEEE, MMM d"
+        let explicitFormatter = DateFormatter()
+        explicitFormatter.locale = Locale(identifier: "en_US_POSIX")
+        explicitFormatter.dateFormat = "EEEE, MMM d"
+        if let parsed = explicitFormatter.date(from: title) {
+            let month = calendar.component(.month, from: parsed)
+            let day = calendar.component(.day, from: parsed)
+            let currentYear = calendar.component(.year, from: now)
+
+            var components = DateComponents()
+            components.year = currentYear
+            components.month = month
+            components.day = day
+
+            if let candidate = calendar.date(from: components) {
+                if candidate > now, let previousYear = calendar.date(byAdding: .year, value: -1, to: candidate) {
+                    return previousYear
+                }
+                return candidate
+            }
+        }
+
+        // Relative weekday labels like "Last Sunday" or "Monday"
+        let weekdayMap: [String: Int] = [
+            "Sunday": 1, "Monday": 2, "Tuesday": 3, "Wednesday": 4,
+            "Thursday": 5, "Friday": 6, "Saturday": 7
+        ]
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isLastPrefix = normalized.hasPrefix("Last ")
+        let weekdayName = isLastPrefix
+            ? String(normalized.dropFirst("Last ".count))
+            : normalized
+
+        if let targetWeekday = weekdayMap[weekdayName] {
+            let todayWeekday = calendar.component(.weekday, from: now)
+            var daysBack = (todayWeekday - targetWeekday + 7) % 7
+            if isLastPrefix || daysBack == 0 { daysBack += 7 }
+            return calendar.date(byAdding: .day, value: -daysBack, to: calendar.startOfDay(for: now))
+        }
+
+        return nil
+    }
+
     // MARK: - Add Subscription + Auto-log Transaction
-    func addSubscription(_ sub: RecurringSubscription, logInitialTransaction: Bool = true) {
+    func addSubscription(
+        _ sub: RecurringSubscription,
+        logInitialTransaction: Bool = true,
+        initialTransactionDate: Date = Date()
+    ) {
         // Add to recurring list
         subscriptions.append(sub)
 
         guard logInitialTransaction else { return }
 
-        // Auto-log as a transaction today
+        // Auto-log as a transaction on the selected start date
         addRecurringTransaction(
             for: sub,
-            on: Date(),
-            timeString: recurringTimeString(for: Date())
+            on: initialTransactionDate,
+            timeString: recurringTimeString(for: initialTransactionDate)
         )
     }
 
@@ -408,20 +490,7 @@ class TransactionData {
                 transactions: updated
             )
         } else {
-            let labelFormatter = DateFormatter()
-            labelFormatter.dateFormat = "EEEE, MMM d"
-            let insertIndex = groups.firstIndex(where: { group in
-                if group.title == "Today" { return false }
-                if group.title == "Yesterday" {
-                    return !Calendar.current.isDateInToday(date)
-                }
-                if let groupDate = labelFormatter.date(from: group.title) {
-                    return groupDate < date
-                }
-                return false
-            }) ?? groups.endIndex
-
-            groups.insert(SpendingTransactionGroup(title: dayLabel, transactions: [transaction]), at: insertIndex)
+            groups.append(SpendingTransactionGroup(title: dayLabel, transactions: [transaction]))
         }
     }
 

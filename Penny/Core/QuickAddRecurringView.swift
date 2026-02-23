@@ -68,6 +68,7 @@ struct QuickAddRecurringView: View {
 
     @State private var name: String
     @State private var plan = ""
+    @State private var priceText: String
     @State private var selectedFrequency: BillingFrequency = .monthly
 
     private let accent = Color(red: 0.35, green: 0.98, blue: 0.85)
@@ -77,14 +78,23 @@ struct QuickAddRecurringView: View {
         self.prefillPrice = prefillPrice
         self.startDate = startDate
         _name = State(initialValue: prefillName)
+        _priceText = State(initialValue: String(format: "%.2f", prefillPrice))
+    }
+
+    private var enteredPrice: Double {
+        let cleaned = priceText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        return Double(cleaned) ?? 0
+    }
+
+    private var isSaveEnabled: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && enteredPrice > 0
     }
 
     private var nextBillingDate: Date {
-        Self.nextOccurrenceDate(
-            anchorDate: startDate,
-            frequency: selectedFrequency,
-            after: Date()
-        )
+        selectedFrequency.advanced(from: Calendar.current.startOfDay(for: startDate))
     }
 
     private var nextBillingString: String {
@@ -163,12 +173,9 @@ struct QuickAddRecurringView: View {
                             Spacer()
                             VStack(alignment: .trailing, spacing: 2) {
                                 HStack(alignment: .firstTextBaseline, spacing: 1) {
-                                    Text("$\(String(format: "%.2f", prefillPrice))")
+                                    Text("$\(String(format: "%.2f", enteredPrice))")
                                         .font(.system(size: 20, weight: .light, design: .serif))
                                         .foregroundColor(.white)
-                                    Text("/mo")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.white.opacity(0.3))
                                 }
                                 Text("Next: \(nextBillingString)")
                                     .font(.system(size: 10, weight: .medium))
@@ -187,6 +194,7 @@ struct QuickAddRecurringView: View {
 
                         // Plan description
                         inputField(label: "PLAN DESCRIPTION (OPTIONAL)", text: $plan, placeholder: "e.g. Premium, Family, Student...")
+                        amountField
 
                         // Frequency picker
                         VStack(alignment: .leading, spacing: 10) {
@@ -253,11 +261,12 @@ struct QuickAddRecurringView: View {
 
                 // Add button
                 Button {
+                    guard isSaveEnabled else { return }
                     Haptics.medium()
                     let sub = RecurringSubscription(
                         name: name.isEmpty ? prefillName : name,
                         plan: plan.isEmpty ? nil : plan,
-                        price: prefillPrice,
+                        price: enteredPrice,
                         iconName: "music.note",
                         iconColor: .white,
                         bgColor: accent,
@@ -276,31 +285,16 @@ struct QuickAddRecurringView: View {
                         .frame(height: 56)
                         .background(
                             RoundedRectangle(cornerRadius: 18)
-                                .fill(accent)
-                                .shadow(color: accent.opacity(0.3), radius: 12, y: 4)
+                                .fill(isSaveEnabled ? accent : Color.white.opacity(0.08))
+                                .shadow(color: isSaveEnabled ? accent.opacity(0.3) : .clear, radius: 12, y: 4)
                         )
                 }
+                .disabled(!isSaveEnabled)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 48)
             }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
-    }
-
-    private static func nextOccurrenceDate(anchorDate: Date, frequency: BillingFrequency, after referenceDate: Date) -> Date {
-        let calendar = Calendar.current
-        let anchor = calendar.startOfDay(for: anchorDate)
-        let reference = calendar.startOfDay(for: referenceDate)
-
-        if anchor > reference {
-            return frequency.advanced(from: anchor)
-        }
-
-        var next = frequency.advanced(from: anchor)
-        while next <= reference {
-            next = frequency.advanced(from: next)
-        }
-        return next
     }
 
     private func inputField(label: String, text: Binding<String>, placeholder: String) -> some View {
@@ -322,6 +316,35 @@ struct QuickAddRecurringView: View {
                         .fill(Color.white.opacity(0.06))
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
                 )
+        }
+    }
+
+    private var amountField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("PRICE")
+                .font(.system(size: 10, weight: .medium))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+                .padding(.horizontal, 4)
+
+            HStack(spacing: 10) {
+                Text("$")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+
+                TextField("0.00", text: $priceText)
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.white)
+                    .tint(accent)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+            )
         }
     }
 }

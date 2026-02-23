@@ -7,17 +7,15 @@ struct AddRecurringView: View {
 
     @State private var name = ""
     @State private var plan = ""
-    @State private var priceText = ""
+    @State private var priceDigits = "0"
+    @State private var startDate = Date()
     @State private var selectedFrequency: BillingFrequency = .monthly
+    @FocusState private var isPriceFieldFocused: Bool
 
     private let accent = Color(red: 0.35, green: 0.98, blue: 0.85)
 
     private var enteredPrice: Double {
-        let cleaned = priceText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-        return Double(cleaned) ?? 0
+        (Double(priceDigits) ?? 0) / 100
     }
 
     private var isSaveEnabled: Bool {
@@ -27,13 +25,13 @@ struct AddRecurringView: View {
     private var nextBillingString: String {
         let fmt = DateFormatter()
         fmt.dateFormat = "MMM d"
-        return fmt.string(from: selectedFrequency.nextDate)
+        return fmt.string(from: selectedFrequency.advanced(from: Calendar.current.startOfDay(for: startDate)))
     }
 
     private var nextBillingFull: String {
         let fmt = DateFormatter()
         fmt.dateFormat = "EEEE, MMM d"
-        return fmt.string(from: selectedFrequency.nextDate)
+        return fmt.string(from: selectedFrequency.advanced(from: Calendar.current.startOfDay(for: startDate)))
     }
 
     var body: some View {
@@ -127,6 +125,7 @@ struct AddRecurringView: View {
                         inputField(label: "SERVICE NAME", text: $name, placeholder: "Netflix, Spotify...")
                         inputField(label: "PLAN DESCRIPTION (OPTIONAL)", text: $plan, placeholder: "e.g. Premium, Family, Student...")
                         amountField
+                        startDateField
 
                         // Frequency picker
                         VStack(alignment: .leading, spacing: 10) {
@@ -200,10 +199,14 @@ struct AddRecurringView: View {
                         nextBilling: nextBillingString,
                         frequencyDays: selectedFrequency.days,
                         frequencyKey: selectedFrequency.storageKey,
-                        nextBillingEpoch: selectedFrequency.nextDate.timeIntervalSince1970
+                        nextBillingEpoch: selectedFrequency.advanced(from: Calendar.current.startOfDay(for: startDate)).timeIntervalSince1970
                     )
 
-                    data.addSubscription(sub, logInitialTransaction: true)
+                    data.addSubscription(
+                        sub,
+                        logInitialTransaction: true,
+                        initialTransactionDate: startDate
+                    )
                     dismiss()
                 } label: {
                     Text("Add Subscription")
@@ -270,11 +273,51 @@ struct AddRecurringView: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.white.opacity(0.7))
 
-                TextField("0.00", text: $priceText)
-                    .keyboardType(.decimalPad)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(.white)
+                ZStack(alignment: .leading) {
+                    Text(String(format: "%.2f", enteredPrice))
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundColor(.white)
+
+                    TextField("", text: $priceDigits)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        .focused($isPriceFieldFocused)
+                        .foregroundColor(.clear)
+                        .tint(.clear)
+                        .onChange(of: priceDigits) { _, newValue in
+                            let digits = newValue.filter(\.isNumber)
+                            priceDigits = digits.isEmpty ? "0" : String(digits.prefix(9))
+                        }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isPriceFieldFocused = true
+            }
+        }
+    }
+
+    private var startDateField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("START DATE")
+                .font(.system(size: 10, weight: .medium))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+                .padding(.horizontal, 4)
+
+            HStack {
+                DatePicker("", selection: $startDate, displayedComponents: .date)
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
                     .tint(accent)
+                Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)

@@ -3,6 +3,8 @@ import SwiftUI
 struct RootTabView: View {
     @State private var selectedTab: Int = 1
     @State private var showMindfulPause = false
+    @Environment(\.scenePhase) private var scenePhase
+    private let data = TransactionData.shared
 
     var body: some View {
         ZStack {
@@ -41,6 +43,14 @@ struct RootTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .triggerMindfulSpending)) { _ in
             Haptics.medium()
             showMindfulPause = true
+        }
+        .onAppear {
+            data.syncRecurringTransactions()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                data.syncRecurringTransactions()
+            }
         }
     }
 }
