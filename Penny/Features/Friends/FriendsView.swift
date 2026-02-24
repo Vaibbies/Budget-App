@@ -39,6 +39,11 @@ struct FriendsView: View {
                         quickStatsRow
                             .padding(.horizontal, 24)
 
+                        if selectedFilter == .overview || selectedFilter == .expenses {
+                            FriendsChartsSection()
+                                .padding(.horizontal, 24)
+                        }
+
                         if selectedFilter == .overview || selectedFilter == .requests {
                             if !FriendsData.pendingRequests.isEmpty || !FriendsData.sentRequests.isEmpty {
                                 PendingRequestsSection()
@@ -182,6 +187,186 @@ struct FriendsView: View {
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
         )
+    }
+}
+
+// MARK: - Charts Section
+struct FriendsChartsSection: View {
+    private let weeklySplitTotals: [Double] = [38, 54, 31, 62, 45, 71, 58]
+    private var friendBars: [(name: String, amount: Double)] {
+        FriendsData.allFriends
+            .filter { $0.amount != 0 }
+            .map { ($0.name, $0.amount) }
+            .sorted { abs($0.amount) > abs($1.amount) }
+    }
+    private var maxBarValue: Double {
+        max(friendBars.map { abs($0.amount) }.max() ?? 1, 1)
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            trendCard
+            barChartCard
+        }
+    }
+
+    private var trendCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("WEEKLY SPLIT TREND")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.8)
+                .foregroundColor(.white.opacity(0.45))
+
+            GeometryReader { geo in
+                let width = geo.size.width
+                let height = geo.size.height
+                let maxValue = max(weeklySplitTotals.max() ?? 1, 1)
+                let minValue = min(weeklySplitTotals.min() ?? 0, 0)
+                let range = max(maxValue - minValue, 1)
+                let points = weeklySplitTotals.enumerated().map { index, value in
+                    CGPoint(
+                        x: width * CGFloat(index) / CGFloat(max(weeklySplitTotals.count - 1, 1)),
+                        y: height - ((CGFloat(value - minValue) / CGFloat(range)) * height)
+                    )
+                }
+
+                ZStack(alignment: .bottomLeading) {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.03))
+
+                    VStack(spacing: 0) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            Rectangle()
+                                .fill(Color.white.opacity(0.06))
+                                .frame(height: 1)
+                            Spacer()
+                        }
+                    }
+                    .padding(.vertical, 8)
+
+                    SparklineAreaShape(points: points)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.30),
+                                    Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.02)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+
+                    SparklineShape(points: points)
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 1.0, green: 0.58, blue: 0.35),
+                                    Color(red: 1.0, green: 0.42, blue: 0.16)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+                        )
+                }
+            }
+            .frame(height: 108)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        )
+    }
+
+    private var barChartCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("WHO OWES WHAT")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.8)
+                .foregroundColor(.white.opacity(0.45))
+
+            VStack(spacing: 10) {
+                ForEach(Array(friendBars.enumerated()), id: \.offset) { _, entry in
+                    friendBarRow(name: entry.name, amount: entry.amount)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        )
+    }
+
+    private func friendBarRow(name: String, amount: Double) -> some View {
+        let ratio = CGFloat(abs(amount) / maxBarValue)
+        let barColor = amount >= 0 ? Color(red: 1.0, green: 0.42, blue: 0.16) : Color(red: 0.42, green: 0.65, blue: 1.0)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.85))
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(amount >= 0 ? "+$\(String(format: "%.2f", amount))" : "-$\(String(format: "%.2f", abs(amount)))")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(barColor)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                    Capsule()
+                        .fill(barColor)
+                        .frame(width: max(10, geo.size.width * ratio))
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+}
+
+private struct SparklineShape: Shape {
+    let points: [CGPoint]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
+        return path
+    }
+}
+
+private struct SparklineAreaShape: Shape {
+    let points: [CGPoint]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let first = points.first, let last = points.last else { return path }
+        path.move(to: CGPoint(x: first.x, y: rect.maxY))
+        path.addLine(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
+        path.addLine(to: CGPoint(x: last.x, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }
 

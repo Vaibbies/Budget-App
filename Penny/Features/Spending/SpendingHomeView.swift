@@ -33,6 +33,19 @@ struct SpendingHomeView: View {
         return "\(pct)% of your spending is on \(topCat.lowercased()) this week"
     }
 
+    private var weeklyTrendData: [(label: String, total: Double)] {
+        let daily = data.groups.prefix(7).map { group in
+            (label: String(group.title.prefix(3)).uppercased(),
+             total: group.transactions.reduce(0) { $0 + $1.amountValue })
+        }.reversed()
+
+        let values = Array(daily)
+        if values.isEmpty {
+            return [("MON", 0), ("TUE", 0), ("WED", 0), ("THU", 0), ("FRI", 0), ("SAT", 0), ("SUN", 0)]
+        }
+        return values
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -84,6 +97,10 @@ struct SpendingHomeView: View {
                         WeeklyActivityCard()
                             .padding(.bottom, 8)
 
+                        weeklyTrendSection
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 8)
+
                         upcomingRecurringSection
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
@@ -107,6 +124,90 @@ struct SpendingHomeView: View {
             AddTransactionView()
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Weekly Trend
+    private var weeklyTrendSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Weekly Trend")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                Spacer()
+                Text("Last \(weeklyTrendData.count) days")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            }
+
+            VStack(spacing: 10) {
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    let height = geo.size.height
+                    let maxValue = max(weeklyTrendData.map { $0.total }.max() ?? 1, 1)
+
+                    let points = weeklyTrendData.enumerated().map { index, item in
+                        CGPoint(
+                            x: width * CGFloat(index) / CGFloat(max(weeklyTrendData.count - 1, 1)),
+                            y: height - (height * CGFloat(item.total / maxValue))
+                        )
+                    }
+
+                    ZStack(alignment: .bottomLeading) {
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(Color.white.opacity(0.03))
+
+                        VStack(spacing: 0) {
+                            ForEach(0..<3, id: \.self) { _ in
+                                Rectangle().fill(Color.white.opacity(0.06)).frame(height: 1)
+                                Spacer()
+                            }
+                        }
+                        .padding(.vertical, 8)
+
+                        HomeSparklineArea(points: points)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.28),
+                                        Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.02)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+
+                        HomeSparkline(points: points)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.55, blue: 0.36),
+                                        Color(red: 1.0, green: 0.42, blue: 0.16)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+                            )
+                    }
+                }
+                .frame(height: 110)
+
+                HStack {
+                    ForEach(Array(weeklyTrendData.enumerated()), id: \.offset) { _, item in
+                        Text(item.label)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.35))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.white.opacity(0.04))
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.06), lineWidth: 1))
+            )
         }
     }
 
@@ -459,6 +560,33 @@ struct SpendingHomeView: View {
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
         }
+    }
+}
+
+private struct HomeSparkline: Shape {
+    let points: [CGPoint]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() { path.addLine(to: point) }
+        return path
+    }
+}
+
+private struct HomeSparklineArea: Shape {
+    let points: [CGPoint]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let first = points.first, let last = points.last else { return path }
+        path.move(to: CGPoint(x: first.x, y: rect.maxY))
+        path.addLine(to: first)
+        for point in points.dropFirst() { path.addLine(to: point) }
+        path.addLine(to: CGPoint(x: last.x, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }
 

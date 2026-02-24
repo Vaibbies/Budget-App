@@ -40,6 +40,8 @@ struct SpendingAnalyticsView: View {
                             transactionCount: data.transactionCount
                         )
 
+                        SpendingTrendSection(groups: data.groups)
+
                         TopCategoriesSection(categories: data.categoryTotals)
 
                         StatsRowSection(

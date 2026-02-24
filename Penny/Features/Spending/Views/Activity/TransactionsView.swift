@@ -26,6 +26,16 @@ struct TransactionsView: View {
         let txIndex: Int
     }
 
+    private var recentDayTotals: [(label: String, total: Double)] {
+        let totals = data.groups.prefix(6).map { group in
+            (label: String(group.title.prefix(3)).uppercased(),
+             total: group.transactions.reduce(0) { $0 + $1.amountValue })
+        }.reversed()
+
+        let values = Array(totals)
+        return values.isEmpty ? [("MON", 0), ("TUE", 0), ("WED", 0), ("THU", 0), ("FRI", 0), ("SAT", 0)] : values
+    }
+
     var body: some View {
         ZStack {
             backgroundGradient
@@ -170,7 +180,7 @@ struct TransactionsView: View {
 
     // MARK: - Spent This Week
     private var spentSection: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 10) {
             Text("SPENT THIS WEEK")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(TransactionsTheme.muted)
@@ -180,6 +190,28 @@ struct TransactionsView: View {
                 .font(.system(size: 48, weight: .regular, design: .serif))
                 .foregroundColor(.white)
                 .tracking(-1)
+
+            HStack(alignment: .bottom, spacing: 8) {
+                let maxValue = max(recentDayTotals.map { $0.total }.max() ?? 1, 1)
+
+                ForEach(Array(recentDayTotals.enumerated()), id: \.offset) { _, day in
+                    VStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 22, height: 52)
+                            .overlay(alignment: .bottom) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(TransactionsTheme.accent)
+                                    .frame(height: max(4, 52 * CGFloat(day.total / maxValue)))
+                            }
+
+                        Text(day.label)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.35))
+                    }
+                }
+            }
+            .padding(.top, 2)
         }
         .padding(.top, 16)
         .padding(.bottom, 16)

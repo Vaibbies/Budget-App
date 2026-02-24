@@ -181,6 +181,122 @@ struct TopCategoriesSection: View {
     }
 }
 
+// MARK: - Spending Trend Section
+struct SpendingTrendSection: View {
+    let groups: [SpendingTransactionGroup]
+
+    private var points: [(label: String, total: Double)] {
+        let values = groups.prefix(7).map { group in
+            (label: String(group.title.prefix(3)).uppercased(),
+             total: group.transactions.reduce(0) { $0 + $1.amountValue })
+        }.reversed()
+        let array = Array(values)
+        return array.isEmpty ? [("MON", 0), ("TUE", 0), ("WED", 0), ("THU", 0), ("FRI", 0), ("SAT", 0), ("SUN", 0)] : array
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("SPENDING TREND")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+                .padding(.horizontal, 4)
+
+            VStack(spacing: 10) {
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    let height = geo.size.height
+                    let maxValue = max(points.map { $0.total }.max() ?? 1, 1)
+
+                    let linePoints = points.enumerated().map { index, point in
+                        CGPoint(
+                            x: width * CGFloat(index) / CGFloat(max(points.count - 1, 1)),
+                            y: height - (height * CGFloat(point.total / maxValue))
+                        )
+                    }
+
+                    ZStack(alignment: .bottomLeading) {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white.opacity(0.03))
+
+                        AnalyticsSparklineArea(points: linePoints)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.24),
+                                        Color(red: 1.0, green: 0.38, blue: 0.13).opacity(0.02)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+
+                        AnalyticsSparkline(points: linePoints)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.56, blue: 0.36),
+                                        Color(red: 1.0, green: 0.38, blue: 0.13)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+                            )
+                    }
+                }
+                .frame(height: 120)
+
+                HStack {
+                    ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                        Text(point.label)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.35))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(.ultraThinMaterial)
+                    .background(RoundedRectangle(cornerRadius: 24)
+                        .fill(Color(red: 0.07, green: 0.07, blue: 0.09).opacity(0.7)))
+                    .overlay(RoundedRectangle(cornerRadius: 24)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.45), radius: 15, x: 0, y: 5)
+            )
+        }
+    }
+}
+
+private struct AnalyticsSparkline: Shape {
+    let points: [CGPoint]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() { path.addLine(to: point) }
+        return path
+    }
+}
+
+private struct AnalyticsSparklineArea: Shape {
+    let points: [CGPoint]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let first = points.first, let last = points.last else { return path }
+        path.move(to: CGPoint(x: first.x, y: rect.maxY))
+        path.addLine(to: first)
+        for point in points.dropFirst() { path.addLine(to: point) }
+        path.addLine(to: CGPoint(x: last.x, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
 // MARK: - Category Progress Row
 struct CategoryProgressRow: View {
     let category: CategoryData
