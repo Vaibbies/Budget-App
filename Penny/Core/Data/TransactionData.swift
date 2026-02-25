@@ -555,31 +555,125 @@ class TransactionData {
     }
 
     // MARK: - Sample Data
-    static var sampleGroups: [SpendingTransactionGroup] = [
-        SpendingTransactionGroup(title: "Today", transactions: [
-            SpendingTransaction(icon: "cup.and.saucer.fill", title: "Blue Bottle", subtitle: "Coffee & Pastry", time: "08:42 AM", amount: "-$12.50", isImpulse: false, iconColor: Color(red: 1.0, green: 0.416, blue: 0.165), bgColor: Color.orange.opacity(0.1), borderColor: Color.orange.opacity(0.2), category: .lifestyle),
-            SpendingTransaction(icon: "car.fill", title: "Uber Trip", subtitle: "Transport", time: "10:15 AM", amount: "-$24.20", isImpulse: false, iconColor: Color.blue.opacity(0.8), bgColor: Color.blue.opacity(0.1), borderColor: Color.blue.opacity(0.2), category: .transport),
-            SpendingTransaction(icon: "bag.fill", title: "Target", subtitle: "Shopping", time: "12:30 PM", amount: "-$47.83", isImpulse: true, iconColor: Color.red.opacity(0.8), bgColor: Color.red.opacity(0.1), borderColor: Color.red.opacity(0.2), category: .shopping),
-            SpendingTransaction(icon: "fork.knife", title: "Chipotle", subtitle: "Dining", time: "01:15 PM", amount: "-$14.25", isImpulse: false, iconColor: Color(red: 0.2, green: 0.78, blue: 0.55), bgColor: Color.green.opacity(0.1), borderColor: Color.green.opacity(0.2), category: .dining),
-        ]),
-        SpendingTransactionGroup(title: "Yesterday", transactions: [
-            SpendingTransaction(icon: "fork.knife", title: "Sweetgreen Salads", subtitle: "Dining", time: "01:30 PM", amount: "-$18.90", isImpulse: false, iconColor: Color(red: 0.2, green: 0.78, blue: 0.55), bgColor: Color.green.opacity(0.1), borderColor: Color.green.opacity(0.2), category: .dining),
-            SpendingTransaction(icon: "tram.fill", title: "CalTrain Ticket", subtitle: "Transport", time: "05:45 PM", amount: "-$12.00", isImpulse: false, iconColor: Color.blue.opacity(0.8), bgColor: Color.blue.opacity(0.1), borderColor: Color.blue.opacity(0.2), category: .transport),
-            SpendingTransaction(icon: "gamecontroller.fill", title: "Steam Store", subtitle: "Entertainment", time: "09:41 PM", amount: "-$59.99", isImpulse: true, iconColor: Color.purple.opacity(0.8), bgColor: Color.purple.opacity(0.1), borderColor: Color.purple.opacity(0.2), category: .entertainment),
-            SpendingTransaction(icon: "cup.and.saucer.fill", title: "Ritual Coffee", subtitle: "Lifestyle", time: "09:12 AM", amount: "-$5.75", isImpulse: false, iconColor: Color(red: 1.0, green: 0.416, blue: 0.165), bgColor: Color.orange.opacity(0.1), borderColor: Color.orange.opacity(0.2), category: .lifestyle),
-        ]),
-        SpendingTransactionGroup(title: "Monday", transactions: [
-            SpendingTransaction(icon: "bolt.fill", title: "PG&E Electric", subtitle: "Utilities", time: "Auto-Pay", amount: "-$82.40", isImpulse: false, iconColor: Color.yellow.opacity(0.9), bgColor: Color.yellow.opacity(0.1), borderColor: Color.yellow.opacity(0.2), category: .utilities),
-            SpendingTransaction(icon: "cart.fill", title: "Trader Joe's", subtitle: "Groceries", time: "11:20 AM", amount: "-$63.17", isImpulse: false, iconColor: Color(red: 0.2, green: 0.78, blue: 0.55), bgColor: Color.green.opacity(0.1), borderColor: Color.green.opacity(0.2), category: .groceries),
-            SpendingTransaction(icon: "dumbbell.fill", title: "Equinox", subtitle: "Fitness", time: "Auto-Pay", amount: "-$95.00", isImpulse: true, iconColor: Color(red: 1.0, green: 0.416, blue: 0.165), bgColor: Color.orange.opacity(0.1), borderColor: Color.orange.opacity(0.2), category: .fitness),
-            SpendingTransaction(icon: "music.note", title: "Spotify Premium", subtitle: "Subscriptions", time: "Auto-Pay", amount: "-$10.99", isImpulse: false, iconColor: Color.green.opacity(0.8), bgColor: Color.green.opacity(0.1), borderColor: Color.green.opacity(0.2), category: .subscriptions),
-        ]),
-        SpendingTransactionGroup(title: "Last Sunday", transactions: [
-            SpendingTransaction(icon: "fuelpump.fill", title: "Shell Gas", subtitle: "Transport", time: "10:05 AM", amount: "-$52.30", isImpulse: false, iconColor: Color.blue.opacity(0.8), bgColor: Color.blue.opacity(0.1), borderColor: Color.blue.opacity(0.2), category: .transport),
-            SpendingTransaction(icon: "film.fill", title: "AMC Theatres", subtitle: "Entertainment", time: "07:30 PM", amount: "-$28.50", isImpulse: true, iconColor: Color.purple.opacity(0.8), bgColor: Color.purple.opacity(0.1), borderColor: Color.purple.opacity(0.2), category: .entertainment),
-            SpendingTransaction(icon: "cup.and.saucer.fill", title: "Philz Coffee", subtitle: "Lifestyle", time: "09:00 AM", amount: "-$7.25", isImpulse: false, iconColor: Color(red: 1.0, green: 0.416, blue: 0.165), bgColor: Color.orange.opacity(0.1), borderColor: Color.orange.opacity(0.2), category: .lifestyle),
-        ]),
+    private struct SeedTemplate {
+        let title: String
+        let subtitle: String
+        let icon: String
+        let category: SpendingCategory
+        let amountRange: ClosedRange<Double>
+        let canBeImpulse: Bool
+        let canAutoPay: Bool
+    }
+
+    private static let seedTemplates: [SeedTemplate] = [
+        SeedTemplate(title: "Blue Bottle", subtitle: "Coffee & Pastry", icon: "cup.and.saucer.fill", category: .lifestyle, amountRange: 6...18, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "Philz Coffee", subtitle: "Coffee", icon: "cup.and.saucer.fill", category: .lifestyle, amountRange: 5...14, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "Chipotle", subtitle: "Dining", icon: "fork.knife", category: .dining, amountRange: 11...26, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "Sweetgreen", subtitle: "Salad Bowl", icon: "fork.knife", category: .dining, amountRange: 12...24, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "DoorDash", subtitle: "Takeout", icon: "takeoutbag.and.cup.and.straw.fill", category: .dining, amountRange: 17...52, canBeImpulse: true, canAutoPay: false),
+        SeedTemplate(title: "Uber Trip", subtitle: "Transport", icon: "car.fill", category: .transport, amountRange: 10...46, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "BART Reload", subtitle: "Transit", icon: "tram.fill", category: .transport, amountRange: 5...35, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "Shell Gas", subtitle: "Fuel", icon: "fuelpump.fill", category: .transport, amountRange: 28...84, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "Trader Joe's", subtitle: "Groceries", icon: "cart.fill", category: .groceries, amountRange: 28...98, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "Whole Foods", subtitle: "Groceries", icon: "cart.fill", category: .groceries, amountRange: 36...126, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "Costco", subtitle: "Groceries", icon: "cart.fill", category: .groceries, amountRange: 44...188, canBeImpulse: false, canAutoPay: false),
+        SeedTemplate(title: "Target", subtitle: "Shopping", icon: "bag.fill", category: .shopping, amountRange: 18...135, canBeImpulse: true, canAutoPay: false),
+        SeedTemplate(title: "Amazon", subtitle: "Shopping", icon: "bag.fill", category: .shopping, amountRange: 12...176, canBeImpulse: true, canAutoPay: false),
+        SeedTemplate(title: "Apple Store", subtitle: "Shopping", icon: "bag.fill", category: .shopping, amountRange: 19...229, canBeImpulse: true, canAutoPay: false),
+        SeedTemplate(title: "AMC Theatres", subtitle: "Entertainment", icon: "film.fill", category: .entertainment, amountRange: 14...48, canBeImpulse: true, canAutoPay: false),
+        SeedTemplate(title: "Steam Store", subtitle: "Gaming", icon: "gamecontroller.fill", category: .entertainment, amountRange: 9...70, canBeImpulse: true, canAutoPay: false),
+        SeedTemplate(title: "Spotify", subtitle: "Premium", icon: "music.note", category: .subscriptions, amountRange: 9...19, canBeImpulse: false, canAutoPay: true),
+        SeedTemplate(title: "Netflix", subtitle: "Premium Plan", icon: "tv.fill", category: .subscriptions, amountRange: 15...28, canBeImpulse: false, canAutoPay: true),
+        SeedTemplate(title: "iCloud", subtitle: "Storage", icon: "icloud.fill", category: .subscriptions, amountRange: 2...12, canBeImpulse: false, canAutoPay: true),
+        SeedTemplate(title: "PG&E Electric", subtitle: "Utilities", icon: "bolt.fill", category: .utilities, amountRange: 58...156, canBeImpulse: false, canAutoPay: true),
+        SeedTemplate(title: "SF Water", subtitle: "Utilities", icon: "drop.fill", category: .utilities, amountRange: 24...88, canBeImpulse: false, canAutoPay: true),
+        SeedTemplate(title: "Equinox", subtitle: "Membership", icon: "dumbbell.fill", category: .fitness, amountRange: 90...220, canBeImpulse: false, canAutoPay: true),
+        SeedTemplate(title: "ClassPass", subtitle: "Fitness", icon: "figure.run", category: .fitness, amountRange: 39...109, canBeImpulse: false, canAutoPay: true),
     ]
+
+    static var sampleGroups: [SpendingTransactionGroup] {
+        generateInitialGroups()
+    }
+
+    private static func generateInitialGroups(days: Int = 21) -> [SpendingTransactionGroup] {
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        var groups: [SpendingTransactionGroup] = []
+
+        for dayOffset in 0..<days {
+            guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: todayStart) else { continue }
+            let title = dayLabel(for: date)
+
+            let txCount: Int
+            switch dayOffset {
+            case 0...2: txCount = Int.random(in: 4...7)
+            case 3...9: txCount = Int.random(in: 3...6)
+            default: txCount = Int.random(in: 2...5)
+            }
+
+            var dayTransactions: [SpendingTransaction] = []
+            var usedTemplateTitles: Set<String> = []
+
+            for _ in 0..<txCount {
+                let template = randomTemplate(excluding: usedTemplateTitles)
+                usedTemplateTitles.insert(template.title)
+
+                let amount = Double.random(in: template.amountRange)
+                let rounded = (amount * 100).rounded() / 100
+                let categoryColor = template.category.color
+                let useAutoPay = template.canAutoPay && randomChance(0.30)
+
+                let transaction = SpendingTransaction(
+                    icon: template.icon,
+                    title: template.title,
+                    subtitle: template.subtitle,
+                    time: useAutoPay ? "Auto-Pay" : randomTimeString(),
+                    amount: "-$\(String(format: "%.2f", rounded))",
+                    isImpulse: template.canBeImpulse ? randomChance(0.35) : false,
+                    iconColor: categoryColor.opacity(0.90),
+                    bgColor: categoryColor.opacity(0.10),
+                    borderColor: categoryColor.opacity(0.20),
+                    category: template.category
+                )
+                dayTransactions.append(transaction)
+            }
+
+            groups.append(
+                SpendingTransactionGroup(
+                    title: title,
+                    transactions: groupsWithTransactionsSortedByTime([
+                        SpendingTransactionGroup(title: title, transactions: dayTransactions)
+                    ]).first?.transactions ?? dayTransactions
+                )
+            )
+        }
+
+        return groupsSortedChronologically(groups)
+    }
+
+    private static func randomTemplate(excluding usedTitles: Set<String>) -> SeedTemplate {
+        let available = seedTemplates.filter { !usedTitles.contains($0.title) }
+        return (available.isEmpty ? seedTemplates : available).randomElement() ?? seedTemplates[0]
+    }
+
+    private static func randomTimeString() -> String {
+        let hour = Int.random(in: 7...22)
+        let minute = Int.random(in: 0...59)
+        let date = Calendar.current.date(
+            bySettingHour: hour,
+            minute: minute,
+            second: 0,
+            of: Date()
+        ) ?? Date()
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: date)
+    }
+
+    private static func randomChance(_ probability: Double) -> Bool {
+        Double.random(in: 0...1) < probability
+    }
 
     // Keeping this here is fine, but it is no longer used for default seeding
     static var sampleSubscriptions: [RecurringSubscription] = [

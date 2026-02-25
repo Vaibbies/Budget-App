@@ -1,10 +1,19 @@
 import SwiftUI
 
 struct SpendingHomeView: View {
+    private enum TrendPeriod: String, CaseIterable, Identifiable {
+        case weekly = "Weekly"
+        case monthly = "Monthly"
+        case yearly = "Yearly"
+
+        var id: String { rawValue }
+    }
+
     @State private var showDrawer = false
     @State private var showAddTransaction = false
     @State private var showTransactions = false
     @State private var showRecurring = false
+    @State private var selectedTrendPeriod: TrendPeriod = .weekly
 
     @Environment(TransactionData.self) private var data
 
@@ -33,17 +42,126 @@ struct SpendingHomeView: View {
         return "\(pct)% of your spending is on \(topCat.lowercased()) this week"
     }
 
-    private var weeklyTrendData: [(label: String, total: Double)] {
-        let daily = data.groups.prefix(7).map { group in
-            (label: String(group.title.prefix(3)).uppercased(),
-             total: group.transactions.reduce(0) { $0 + $1.amountValue })
-        }.reversed()
+    private var trendData: [(label: String, total: Double)] {
+        let calendar = Calendar.current
+        let now = Date()
+        var dailyTotals: [Date: Double] = [:]
 
-        let values = Array(daily)
-        if values.isEmpty {
-            return [("MON", 0), ("TUE", 0), ("WED", 0), ("THU", 0), ("FRI", 0), ("SAT", 0), ("SUN", 0)]
+        for group in data.groups {
+            guard let date = resolveDate(forGroupTitle: group.title, now: now) else { continue }
+            let dayStart = calendar.startOfDay(for: date)
+            dailyTotals[dayStart, default: 0] += group.transactions.reduce(0) { $0 + $1.amountValue }
         }
-        return values
+
+        switch selectedTrendPeriod {
+        case .weekly:
+            let weekdayFormatter = DateFormatter()
+            weekdayFormatter.dateFormat = "EEE"
+            return (0..<7).reversed().map { daysBack in
+                guard let day = calendar.date(byAdding: .day, value: -daysBack, to: calendar.startOfDay(for: now)) else {
+                    return (label: "---", total: 0)
+                }
+                return (
+                    label: weekdayFormatter.string(from: day).uppercased(),
+                    total: dailyTotals[day, default: 0]
+                )
+            }
+        case .monthly:
+            let monthFormatter = DateFormatter()
+            monthFormatter.dateFormat = "MMM"
+            return (0..<6).reversed().map { monthsBack in
+                guard
+                    let monthDate = calendar.date(byAdding: .month, value: -monthsBack, to: now),
+                    let interval = calendar.dateInterval(of: .month, for: monthDate)
+                else {
+                    return (label: "---", total: 0)
+                }
+
+                let total = dailyTotals.reduce(0) { running, pair in
+                    interval.contains(pair.key) ? running + pair.value : running
+                }
+                return (
+                    label: monthFormatter.string(from: interval.start).uppercased(),
+                    total: total
+                )
+            }
+        case .yearly:
+            let yearFormatter = DateFormatter()
+            yearFormatter.dateFormat = "yyyy"
+            return (0..<5).reversed().map { yearsBack in
+                guard
+                    let yearDate = calendar.date(byAdding: .year, value: -yearsBack, to: now),
+                    let interval = calendar.dateInterval(of: .year, for: yearDate)
+                else {
+                    return (label: "----", total: 0)
+                }
+
+                let total = dailyTotals.reduce(0) { running, pair in
+                    interval.contains(pair.key) ? running + pair.value : running
+                }
+                return (
+                    label: yearFormatter.string(from: interval.start),
+                    total: total
+                )
+            }
+        }
+    }
+
+    private var trendSubtitle: String {
+        switch selectedTrendPeriod {
+        case .weekly: return "Last 7 days"
+        case .monthly: return "Last 6 months"
+        case .yearly: return "Last 5 years"
+        }
+    }
+
+    private func resolveDate(forGroupTitle title: String, now: Date) -> Date? {
+        let calendar = Calendar.current
+
+        if title == "Today" { return calendar.startOfDay(for: now) }
+        if title == "Yesterday" {
+            return calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: now))
+        }
+
+        let explicitFormatter = DateFormatter()
+        explicitFormatter.locale = Locale(identifier: "en_US_POSIX")
+        explicitFormatter.dateFormat = "EEEE, MMM d"
+        if let parsed = explicitFormatter.date(from: title) {
+            let month = calendar.component(.month, from: parsed)
+            let day = calendar.component(.day, from: parsed)
+            let currentYear = calendar.component(.year, from: now)
+
+            var components = DateComponents()
+            components.year = currentYear
+            components.month = month
+            components.day = day
+
+            if let candidate = calendar.date(from: components) {
+                if candidate > now, let previousYear = calendar.date(byAdding: .year, value: -1, to: candidate) {
+                    return previousYear
+                }
+                return candidate
+            }
+        }
+
+        let weekdayMap: [String: Int] = [
+            "Sunday": 1, "Monday": 2, "Tuesday": 3, "Wednesday": 4,
+            "Thursday": 5, "Friday": 6, "Saturday": 7
+        ]
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isLastPrefix = normalized.hasPrefix("Last ")
+        let weekdayName = isLastPrefix
+            ? String(normalized.dropFirst("Last ".count))
+            : normalized
+
+        if let targetWeekday = weekdayMap[weekdayName] {
+            let todayWeekday = calendar.component(.weekday, from: now)
+            var daysBack = (todayWeekday - targetWeekday + 7) % 7
+            if isLastPrefix || daysBack == 0 { daysBack += 7 }
+            return calendar.date(byAdding: .day, value: -daysBack, to: calendar.startOfDay(for: now))
+        }
+
+        return nil
     }
 
     var body: some View {
@@ -127,28 +245,51 @@ struct SpendingHomeView: View {
         }
     }
 
-    // MARK: - Weekly Trend
+    // MARK: - Spending Trend
     private var weeklyTrendSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Weekly Trend")
+                Text("Spending Trend")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                 Spacer()
-                Text("Last \(weeklyTrendData.count) days")
+                Text(trendSubtitle)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.white.opacity(0.45))
             }
 
             VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    ForEach(TrendPeriod.allCases) { period in
+                        Button {
+                            Haptics.light()
+                            selectedTrendPeriod = period
+                        } label: {
+                            Text(period.rawValue)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(selectedTrendPeriod == period ? .white : .white.opacity(0.55))
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 10)
+                                .frame(maxWidth: .infinity)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(selectedTrendPeriod == period
+                                              ? Color.white.opacity(0.15)
+                                              : Color.white.opacity(0.04))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
                 GeometryReader { geo in
                     let width = geo.size.width
                     let height = geo.size.height
-                    let maxValue = max(weeklyTrendData.map { $0.total }.max() ?? 1, 1)
+                    let maxValue = max(trendData.map { $0.total }.max() ?? 1, 1)
 
-                    let points = weeklyTrendData.enumerated().map { index, item in
+                    let points = trendData.enumerated().map { index, item in
                         CGPoint(
-                            x: width * CGFloat(index) / CGFloat(max(weeklyTrendData.count - 1, 1)),
+                            x: width * CGFloat(index) / CGFloat(max(trendData.count - 1, 1)),
                             y: height - (height * CGFloat(item.total / maxValue))
                         )
                     }
@@ -194,7 +335,7 @@ struct SpendingHomeView: View {
                 .frame(height: 110)
 
                 HStack {
-                    ForEach(Array(weeklyTrendData.enumerated()), id: \.offset) { _, item in
+                    ForEach(Array(trendData.enumerated()), id: \.offset) { _, item in
                         Text(item.label)
                             .font(.system(size: 9, weight: .medium))
                             .foregroundColor(.white.opacity(0.35))

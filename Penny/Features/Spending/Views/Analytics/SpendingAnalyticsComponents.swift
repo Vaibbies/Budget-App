@@ -183,66 +183,205 @@ struct TopCategoriesSection: View {
 
 // MARK: - Spending Trend Section
 struct SpendingTrendSection: View {
+    private enum TrendPeriod: String, CaseIterable, Identifiable {
+        case weekly = "Weekly"
+        case monthly = "Monthly"
+        case yearly = "Yearly"
+
+        var id: String { rawValue }
+    }
+
     let groups: [SpendingTransactionGroup]
+    @State private var selectedTrendPeriod: TrendPeriod = .weekly
 
     private var points: [(label: String, total: Double)] {
-        let values = groups.prefix(7).map { group in
-            (label: String(group.title.prefix(3)).uppercased(),
-             total: group.transactions.reduce(0) { $0 + $1.amountValue })
-        }.reversed()
-        let array = Array(values)
-        return array.isEmpty ? [("MON", 0), ("TUE", 0), ("WED", 0), ("THU", 0), ("FRI", 0), ("SAT", 0), ("SUN", 0)] : array
+        let calendar = Calendar.current
+        let now = Date()
+        var dailyTotals: [Date: Double] = [:]
+
+        for group in groups {
+            guard let date = resolveDate(forGroupTitle: group.title, now: now) else { continue }
+            let dayStart = calendar.startOfDay(for: date)
+            dailyTotals[dayStart, default: 0] += group.transactions.reduce(0) { $0 + $1.amountValue }
+        }
+
+        switch selectedTrendPeriod {
+        case .weekly:
+            let weekdayFormatter = DateFormatter()
+            weekdayFormatter.dateFormat = "EEE"
+            return (0..<7).reversed().map { daysBack in
+                guard let day = calendar.date(byAdding: .day, value: -daysBack, to: calendar.startOfDay(for: now)) else {
+                    return (label: "---", total: 0)
+                }
+                return (
+                    label: weekdayFormatter.string(from: day).uppercased(),
+                    total: dailyTotals[day, default: 0]
+                )
+            }
+        case .monthly:
+            let monthFormatter = DateFormatter()
+            monthFormatter.dateFormat = "MMM"
+            return (0..<6).reversed().map { monthsBack in
+                guard
+                    let monthDate = calendar.date(byAdding: .month, value: -monthsBack, to: now),
+                    let interval = calendar.dateInterval(of: .month, for: monthDate)
+                else {
+                    return (label: "---", total: 0)
+                }
+
+                let total = dailyTotals.reduce(0) { running, pair in
+                    interval.contains(pair.key) ? running + pair.value : running
+                }
+                return (
+                    label: monthFormatter.string(from: interval.start).uppercased(),
+                    total: total
+                )
+            }
+        case .yearly:
+            let yearFormatter = DateFormatter()
+            yearFormatter.dateFormat = "yyyy"
+            return (0..<5).reversed().map { yearsBack in
+                guard
+                    let yearDate = calendar.date(byAdding: .year, value: -yearsBack, to: now),
+                    let interval = calendar.dateInterval(of: .year, for: yearDate)
+                else {
+                    return (label: "----", total: 0)
+                }
+
+                let total = dailyTotals.reduce(0) { running, pair in
+                    interval.contains(pair.key) ? running + pair.value : running
+                }
+                return (
+                    label: yearFormatter.string(from: interval.start),
+                    total: total
+                )
+            }
+        }
+    }
+
+    private var trendSubtitle: String {
+        switch selectedTrendPeriod {
+        case .weekly: return "Last 7 days"
+        case .monthly: return "Last 6 months"
+        case .yearly: return "Last 5 years"
+        }
+    }
+
+    private func resolveDate(forGroupTitle title: String, now: Date) -> Date? {
+        let calendar = Calendar.current
+
+        if title == "Today" { return calendar.startOfDay(for: now) }
+        if title == "Yesterday" {
+            return calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: now))
+        }
+
+        let explicitFormatter = DateFormatter()
+        explicitFormatter.locale = Locale(identifier: "en_US_POSIX")
+        explicitFormatter.dateFormat = "EEEE, MMM d"
+        if let parsed = explicitFormatter.date(from: title) {
+            let month = calendar.component(.month, from: parsed)
+            let day = calendar.component(.day, from: parsed)
+            let currentYear = calendar.component(.year, from: now)
+
+            var components = DateComponents()
+            components.year = currentYear
+            components.month = month
+            components.day = day
+
+            if let candidate = calendar.date(from: components) {
+                if candidate > now, let previousYear = calendar.date(byAdding: .year, value: -1, to: candidate) {
+                    return previousYear
+                }
+                return candidate
+            }
+        }
+
+        let weekdayMap: [String: Int] = [
+            "Sunday": 1, "Monday": 2, "Tuesday": 3, "Wednesday": 4,
+            "Thursday": 5, "Friday": 6, "Saturday": 7
+        ]
+        let normalized = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isLastPrefix = normalized.hasPrefix("Last ")
+        let weekdayName = isLastPrefix
+            ? String(normalized.dropFirst("Last ".count))
+            : normalized
+
+        if let targetWeekday = weekdayMap[weekdayName] {
+            let todayWeekday = calendar.component(.weekday, from: now)
+            var daysBack = (todayWeekday - targetWeekday + 7) % 7
+            if isLastPrefix || daysBack == 0 { daysBack += 7 }
+            return calendar.date(byAdding: .day, value: -daysBack, to: calendar.startOfDay(for: now))
+        }
+
+        return nil
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("SPENDING TREND")
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(2)
-                .foregroundColor(.white.opacity(0.4))
-                .padding(.horizontal, 4)
+            HStack {
+                Text("SPENDING TREND")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer()
+                Text(trendSubtitle)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 4)
 
             VStack(spacing: 10) {
-                GeometryReader { geo in
-                    let width = geo.size.width
-                    let height = geo.size.height
-                    let maxValue = max(points.map { $0.total }.max() ?? 1, 1)
-
-                    let linePoints = points.enumerated().map { index, point in
-                        CGPoint(
-                            x: width * CGFloat(index) / CGFloat(max(points.count - 1, 1)),
-                            y: height - (height * CGFloat(point.total / maxValue))
-                        )
+                HStack(spacing: 8) {
+                    ForEach(TrendPeriod.allCases) { period in
+                        Button {
+                            selectedTrendPeriod = period
+                        } label: {
+                            Text(period.rawValue)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(selectedTrendPeriod == period ? .white : .white.opacity(0.55))
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 10)
+                                .frame(maxWidth: .infinity)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(selectedTrendPeriod == period
+                                              ? Color.white.opacity(0.14)
+                                              : Color.white.opacity(0.04))
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
+                }
+
+                GeometryReader { geo in
+                    let maxValue = max(points.map { $0.total }.max() ?? 1, 1)
 
                     ZStack(alignment: .bottomLeading) {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(Color.white.opacity(0.03))
 
-                        AnalyticsSparklineArea(points: linePoints)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.24),
-                                        Color(red: 1.0, green: 0.38, blue: 0.13).opacity(0.02)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
+                        HStack(alignment: .bottom, spacing: 8) {
+                            ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                                let ratio = CGFloat(point.total / maxValue)
 
-                        AnalyticsSparkline(points: linePoints)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 1.0, green: 0.56, blue: 0.36),
-                                        Color(red: 1.0, green: 0.38, blue: 0.13)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
-                            )
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                Color(red: 1.0, green: 0.56, blue: 0.36),
+                                                Color(red: 1.0, green: 0.38, blue: 0.13)
+                                            ],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: max(6, geo.size.height * ratio))
+                                    .opacity(point.total == 0 ? 0.3 : 0.95)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 10)
                     }
                 }
                 .frame(height: 120)
@@ -267,33 +406,6 @@ struct SpendingTrendSection: View {
                     .shadow(color: .black.opacity(0.45), radius: 15, x: 0, y: 5)
             )
         }
-    }
-}
-
-private struct AnalyticsSparkline: Shape {
-    let points: [CGPoint]
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        guard let first = points.first else { return path }
-        path.move(to: first)
-        for point in points.dropFirst() { path.addLine(to: point) }
-        return path
-    }
-}
-
-private struct AnalyticsSparklineArea: Shape {
-    let points: [CGPoint]
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        guard let first = points.first, let last = points.last else { return path }
-        path.move(to: CGPoint(x: first.x, y: rect.maxY))
-        path.addLine(to: first)
-        for point in points.dropFirst() { path.addLine(to: point) }
-        path.addLine(to: CGPoint(x: last.x, y: rect.maxY))
-        path.closeSubpath()
-        return path
     }
 }
 
