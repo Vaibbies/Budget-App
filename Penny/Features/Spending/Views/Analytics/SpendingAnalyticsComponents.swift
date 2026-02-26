@@ -1,5 +1,23 @@
 import SwiftUI
 
+private extension View {
+    func analyticsCardStyle() -> some View {
+        background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(.ultraThinMaterial)
+                .background(
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(Color(red: 0.07, green: 0.07, blue: 0.09).opacity(0.7))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.45), radius: 15, x: 0, y: 5)
+        )
+    }
+}
+
 // MARK: - Analytics Header
 struct AnalyticsHeader: View {
     let onBack: () -> Void
@@ -168,15 +186,7 @@ struct TopCategoriesSection: View {
                 }
             }
             .padding(20)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(.ultraThinMaterial)
-                    .background(RoundedRectangle(cornerRadius: 24)
-                        .fill(Color(red: 0.07, green: 0.07, blue: 0.09).opacity(0.7)))
-                    .overlay(RoundedRectangle(cornerRadius: 24)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.45), radius: 15, x: 0, y: 5)
-            )
+            .analyticsCardStyle()
         }
     }
 }
@@ -396,15 +406,309 @@ struct SpendingTrendSection: View {
                 }
             }
             .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(.ultraThinMaterial)
-                    .background(RoundedRectangle(cornerRadius: 24)
-                        .fill(Color(red: 0.07, green: 0.07, blue: 0.09).opacity(0.7)))
-                    .overlay(RoundedRectangle(cornerRadius: 24)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.45), radius: 15, x: 0, y: 5)
-            )
+            .analyticsCardStyle()
+        }
+    }
+}
+
+// MARK: - Cash Flow Forecast
+struct CashFlowForecastSection: View {
+    let points: [CashFlowForecastPoint]
+
+    private var maxY: Double {
+        max(points.map { $0.projectedCumulativeOutflow }.max() ?? 1, 1)
+    }
+
+    private var dateFormatter: DateFormatter {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMM d"
+        return fmt
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("CASH FLOW FORECAST")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer()
+                if let final = points.last?.projectedCumulativeOutflow {
+                    Text("14d outflow: $\(String(format: "%.0f", final))")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+                }
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 10) {
+                ForecastChartView(points: points, maxY: maxY)
+                .frame(height: 120)
+
+                HStack {
+                    if let first = points.first {
+                        Text(dateFormatter.string(from: first.date).uppercased())
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.35))
+                    }
+                    Spacer()
+                    if let last = points.last {
+                        Text(dateFormatter.string(from: last.date).uppercased())
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.35))
+                    }
+                }
+            }
+            .padding(16)
+            .analyticsCardStyle()
+        }
+    }
+}
+
+private struct ForecastChartView: View {
+    let points: [CashFlowForecastPoint]
+    let maxY: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            let size = geo.size
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white.opacity(0.03))
+
+                if points.count > 1 {
+                    Path { path in
+                        for index in points.indices {
+                            let position = pointPosition(index: index, size: size)
+                            if index == points.startIndex {
+                                path.move(to: position)
+                            } else {
+                                path.addLine(to: position)
+                            }
+                        }
+                    }
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 1.0, green: 0.60, blue: 0.36),
+                                Color(red: 1.0, green: 0.38, blue: 0.13)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+                    )
+
+                    ForEach(markerIndices, id: \.self) { index in
+                        let position = pointPosition(index: index, size: size)
+                        Circle()
+                            .fill(Color(red: 1.0, green: 0.50, blue: 0.24))
+                            .frame(width: 6, height: 6)
+                            .position(x: position.x, y: position.y)
+                    }
+                }
+            }
+        }
+    }
+
+    private var markerIndices: [Int] {
+        points.indices.filter { idx in
+            idx == points.startIndex || idx == points.index(before: points.endIndex) || idx % 4 == 0
+        }
+    }
+
+    private func pointPosition(index: Int, size: CGSize) -> CGPoint {
+        let xRatio = CGFloat(Double(index) / Double(max(points.count - 1, 1)))
+        let x = size.width * xRatio
+        let yRatio = points[index].projectedCumulativeOutflow / maxY
+        let y = size.height - (size.height * CGFloat(yRatio))
+        return CGPoint(x: x, y: y)
+    }
+}
+
+// MARK: - Recurring Detection
+struct RecurringDetectionSection: View {
+    let patterns: [RecurringPatternInsight]
+
+    private var dateFormatter: DateFormatter {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMM d"
+        return fmt
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("SMART RECURRING DETECTION")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer()
+                Text("\(patterns.count) patterns")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 12) {
+                if patterns.isEmpty {
+                    Text("No recurring patterns detected yet.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(patterns.prefix(4)) { pattern in
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.25))
+                                .overlay(Circle().stroke(Color(red: 0.35, green: 0.98, blue: 0.85).opacity(0.35), lineWidth: 1))
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Image(systemName: "repeat")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(Color(red: 0.35, green: 0.98, blue: 0.85))
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pattern.merchant)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text("Every ~\(pattern.cadenceDays)d • next \(dateFormatter.string(from: pattern.nextExpectedDate))")
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("$\(String(format: "%.2f", pattern.amount))")
+                                    .font(.system(size: 13, weight: .medium, design: .serif))
+                                    .foregroundColor(.white)
+                                Text("\(Int(pattern.confidence * 100))% conf")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .analyticsCardStyle()
+        }
+    }
+}
+
+// MARK: - Merchant Recognition
+struct MerchantRecognitionSection: View {
+    let merchants: [MerchantInsight]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("MERCHANT RECOGNITION")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer()
+                Text("\(merchants.count) matched")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 12) {
+                if merchants.isEmpty {
+                    Text("No recognized merchants yet.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(merchants.prefix(5)) { merchant in
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(Color(red: 0.38, green: 0.65, blue: 0.98).opacity(0.2))
+                                .overlay(Circle().stroke(Color(red: 0.38, green: 0.65, blue: 0.98).opacity(0.3), lineWidth: 1))
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Image(systemName: "building.2.fill")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(Color(red: 0.38, green: 0.65, blue: 0.98))
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(merchant.merchant)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text(merchant.domain ?? "unmapped")
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("$\(String(format: "%.0f", merchant.totalSpent))")
+                                    .font(.system(size: 13, weight: .medium, design: .serif))
+                                    .foregroundColor(.white)
+                                Text("\(merchant.count)x")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .analyticsCardStyle()
+        }
+    }
+}
+
+// MARK: - Rules Engine Section
+struct RulesEngineSection: View {
+    let findings: [RuleFinding]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("RULES ENGINE")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer()
+                Text("\(findings.count) signals")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 10) {
+                ForEach(findings.prefix(4)) { finding in
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle()
+                            .fill(finding.severity.color.opacity(0.18))
+                            .overlay(Circle().stroke(finding.severity.color.opacity(0.35), lineWidth: 1))
+                            .frame(width: 24, height: 24)
+                            .overlay(
+                                Circle()
+                                    .fill(finding.severity.color)
+                                    .frame(width: 7, height: 7)
+                            )
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(finding.title)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                            Text(finding.detail)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                        Spacer()
+                    }
+                }
+            }
+            .padding(16)
+            .analyticsCardStyle()
         }
     }
 }
@@ -482,14 +786,6 @@ struct StatsRowSection: View {
             }
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 24)
-                .fill(.ultraThinMaterial)
-                .background(RoundedRectangle(cornerRadius: 24)
-                    .fill(Color(red: 0.07, green: 0.07, blue: 0.09).opacity(0.7)))
-                .overlay(RoundedRectangle(cornerRadius: 24)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1))
-                .shadow(color: .black.opacity(0.45), radius: 15, x: 0, y: 5)
-        )
+        .analyticsCardStyle()
     }
 }
