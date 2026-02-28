@@ -1,18 +1,26 @@
-# Local Xcode junk (in this repo)
-.deriveddata/
+# ==============================
+# Swift Package Manager
+# ==============================
+.build/
+.swiftpm/
+Packages/
+
+# ==============================
+# Xcode build data
+# ==============================
 DerivedData/
+.deriveddata/
 build/
 
+# ==============================
 # Xcode user-specific files
+# ==============================
 *.xcuserstate
 *.xcuserdata/
 *.xcuserdatad/
-
-# (optional) SwiftPM/Xcode
-.swiftpm/
-
-# macOS Finder junk
-.DS_Store
-
-# Xcode workspace user data (extra safety)
 **/xcuserdata/
+
+# ==============================
+# macOS system files
+# ==============================
+.DS_Store

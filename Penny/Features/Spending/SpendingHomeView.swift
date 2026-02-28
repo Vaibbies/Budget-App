@@ -14,7 +14,7 @@ struct SpendingHomeView: View {
     @State private var showTransactions = false
     @State private var showRecurring = false
     @State private var selectedTrendPeriod: TrendPeriod = .weekly
-
+            
     @Environment(TransactionData.self) private var data
 
     var greeting: String {
