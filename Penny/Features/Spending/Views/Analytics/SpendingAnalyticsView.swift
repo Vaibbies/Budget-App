@@ -42,14 +42,6 @@ struct SpendingAnalyticsView: View {
 
                         SpendingTrendSection(groups: data.groups)
 
-                        CashFlowForecastSection(points: data.cashFlowForecastPoints)
-
-                        RecurringDetectionSection(patterns: data.recurringDetections)
-
-                        MerchantRecognitionSection(merchants: data.merchantInsights)
-
-                        RulesEngineSection(findings: data.ruleFindings)
-
                         TopCategoriesSection(categories: data.categoryTotals)
 
                         StatsRowSection(

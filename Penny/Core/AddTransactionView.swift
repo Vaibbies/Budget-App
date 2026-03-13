@@ -244,14 +244,9 @@ struct AddTransactionView: View {
             dayLabel = fmt.string(from: selectedDate)
         }
 
-        let recognizedTitle = data.recognizedMerchantName(
-            from: merchantName,
-            fallback: selectedCategory.rawValue
-        )
-
         let transaction = SpendingTransaction(
             icon: selectedCategory.icon,
-            title: recognizedTitle,
+            title: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
             subtitle: selectedCategory.rawValue,
             time: timeString,
             amount: "-$\(String(format: "%.2f", amountDouble))",
