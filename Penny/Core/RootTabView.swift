@@ -4,32 +4,44 @@ struct RootTabView: View {
     @State private var selectedTab: Int = 1
     @State private var showMindfulPause = false
     @Environment(\.scenePhase) private var scenePhase
-    private let data = TransactionData.shared
+    @Environment(TransactionData.self) private var data
 
     var body: some View {
         ZStack {
             TabView(selection: $selectedTab) {
-                Tab("Spending", systemImage: "dollarsign.circle.fill", value: 1) {
-                    SpendingHomeView()
-                }
-                Tab("Friends", systemImage: "person.2.fill", value: 0) {
-                    FriendsView()
-                }
-                Tab("Me", systemImage: "person.fill", value: 2) {
-                    MeView()
-                }
-                Tab("Bank", systemImage: "creditcard.fill", value: 3) {
-                    BankView()
-                }
-                Tab(value: 4, role: .search) {
-                    PennyChatView(selectedTab: $selectedTab, showChat: .constant(true))
-                } label: {
-                    Label("Chat", systemImage: "bubble.fill")
-                }
+                SpendingHomeView()
+                    .tabItem {
+                        Label("Spending", systemImage: "dollarsign.circle.fill")
+                    }
+                    .tag(1)
+
+                FriendsView()
+                    .tabItem {
+                        Label("Friends", systemImage: "person.2.fill")
+                    }
+                    .tag(0)
+
+                MeView()
+                    .tabItem {
+                        Label("Me", systemImage: "person.fill")
+                    }
+                    .tag(2)
+
+                BankView()
+                    .tabItem {
+                        Label("Bank", systemImage: "creditcard.fill")
+                    }
+                    .tag(3)
+
+                PennyChatView(selectedTab: $selectedTab, showChat: .constant(true))
+                    .tabItem {
+                        Label("Chat", systemImage: "bubble.fill")
+                    }
+                    .tag(4)
             }
             .tint(Color(red: 1.0, green: 0.42, blue: 0.16))
             .preferredColorScheme(.dark)
-            .onChange(of: selectedTab) { _, newValue in
+            .onChange(of: selectedTab) { _, _ in
                 Haptics.medium()
             }
 

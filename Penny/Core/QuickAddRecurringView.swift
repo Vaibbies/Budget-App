@@ -273,7 +273,10 @@ struct QuickAddRecurringView: View {
                         nextBilling: nextBillingString,
                         frequencyDays: selectedFrequency.days,
                         frequencyKey: selectedFrequency.storageKey,
-                        nextBillingEpoch: nextBillingDate.timeIntervalSince1970
+                        nextBillingEpoch: nextBillingDate.timeIntervalSince1970,
+                        merchantMatchPattern: name.isEmpty ? prefillName : name,
+                        expectedAmountMin: enteredPrice,
+                        expectedAmountMax: enteredPrice
                     )
                     data.addSubscription(sub, logInitialTransaction: false)
                     dismiss()

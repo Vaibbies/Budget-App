@@ -254,7 +254,11 @@ struct AddTransactionView: View {
             iconColor: selectedCategory.color,
             bgColor: selectedCategory.color.opacity(0.1),
             borderColor: selectedCategory.color.opacity(0.2),
-            category: selectedCategory
+            category: selectedCategory,
+            accountId: data.defaultSpendingAccount?.id,
+            kind: .spending,
+            merchantRaw: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
+            merchantNormalized: data.normalizeMerchant(merchantName.isEmpty ? selectedCategory.rawValue : merchantName)
         )
 
         if let index = data.groups.firstIndex(where: { $0.title == dayLabel }) {

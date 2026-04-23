@@ -44,6 +44,130 @@ enum SpendingCategory: String, CaseIterable, Codable {
     }
 }
 
+enum TransactionKind: String, CaseIterable, Codable {
+    case spending = "Spending"
+    case income = "Income"
+    case transfer = "Transfer"
+    case refund = "Refund"
+}
+
+enum AccountType: String, CaseIterable, Codable {
+    case checking = "Checking"
+    case savings = "Savings"
+    case creditCard = "Credit Card"
+    case investment = "Investment"
+    case loan = "Loan"
+    case cash = "Cash"
+}
+
+struct Account: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let type: AccountType
+    let institution: String
+    let balance: Double
+    let lastUpdated: Date
+    let isHidden: Bool
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        type: AccountType,
+        institution: String,
+        balance: Double,
+        lastUpdated: Date = Date(),
+        isHidden: Bool = false
+    ) {
+        self.id = id
+        self.name = name
+        self.type = type
+        self.institution = institution
+        self.balance = balance
+        self.lastUpdated = lastUpdated
+        self.isHidden = isHidden
+    }
+}
+
+struct BudgetCategory: Identifiable, Codable {
+    let id: UUID
+    let category: SpendingCategory
+    var monthlyBudget: Double
+    var isExcluded: Bool
+    var allowsRollover: Bool
+
+    init(
+        id: UUID = UUID(),
+        category: SpendingCategory,
+        monthlyBudget: Double,
+        isExcluded: Bool = false,
+        allowsRollover: Bool = false
+    ) {
+        self.id = id
+        self.category = category
+        self.monthlyBudget = monthlyBudget
+        self.isExcluded = isExcluded
+        self.allowsRollover = allowsRollover
+    }
+}
+
+struct MerchantRule: Identifiable, Codable {
+    let id: UUID
+    let matchPattern: String
+    let categoryOverride: SpendingCategory?
+    let merchantDisplayName: String?
+    let recurringHint: Bool
+
+    init(
+        id: UUID = UUID(),
+        matchPattern: String,
+        categoryOverride: SpendingCategory? = nil,
+        merchantDisplayName: String? = nil,
+        recurringHint: Bool = false
+    ) {
+        self.id = id
+        self.matchPattern = matchPattern
+        self.categoryOverride = categoryOverride
+        self.merchantDisplayName = merchantDisplayName
+        self.recurringHint = recurringHint
+    }
+}
+
+struct SavingsGoal: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let targetAmount: Double
+    var currentAmount: Double
+    let linkedAccountId: UUID?
+    let linkedCategory: SpendingCategory?
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        targetAmount: Double,
+        currentAmount: Double,
+        linkedAccountId: UUID? = nil,
+        linkedCategory: SpendingCategory? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.targetAmount = targetAmount
+        self.currentAmount = currentAmount
+        self.linkedAccountId = linkedAccountId
+        self.linkedCategory = linkedCategory
+    }
+}
+
+struct MonthlyComparison {
+    let current: Double
+    let previous: Double
+
+    var delta: Double { current - previous }
+    var percentChange: Double {
+        guard previous != 0 else { return current == 0 ? 0 : 1 }
+        return delta / previous
+    }
+}
+
 // MARK: - Transaction Model
 struct SpendingTransaction: Identifiable, Codable {
     let id: UUID
@@ -57,13 +181,29 @@ struct SpendingTransaction: Identifiable, Codable {
     let bgColorHex: String
     let borderColorHex: String
     let category: SpendingCategory
+    let accountId: UUID?
+    let kind: TransactionKind
+    let merchantRaw: String?
+    let merchantNormalized: String?
+    let notes: String?
+    let tags: [String]
+    let isExcludedFromBudget: Bool
+    let isRecurringCandidate: Bool
 
     init(
         id: UUID = UUID(),
         icon: String, title: String, subtitle: String,
         time: String, amount: String, isImpulse: Bool,
         iconColor: Color, bgColor: Color, borderColor: Color,
-        category: SpendingCategory
+        category: SpendingCategory,
+        accountId: UUID? = nil,
+        kind: TransactionKind = .spending,
+        merchantRaw: String? = nil,
+        merchantNormalized: String? = nil,
+        notes: String? = nil,
+        tags: [String] = [],
+        isExcludedFromBudget: Bool = false,
+        isRecurringCandidate: Bool = false
     ) {
         self.id = id
         self.icon = icon
@@ -76,6 +216,44 @@ struct SpendingTransaction: Identifiable, Codable {
         self.bgColorHex = bgColor.toHex()
         self.borderColorHex = borderColor.toHex()
         self.category = category
+        self.accountId = accountId
+        self.kind = kind
+        self.merchantRaw = merchantRaw ?? title
+        self.merchantNormalized = merchantNormalized ?? title
+        self.notes = notes
+        self.tags = tags
+        self.isExcludedFromBudget = isExcludedFromBudget
+        self.isRecurringCandidate = isRecurringCandidate
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, icon, title, subtitle, time, amount, isImpulse
+        case iconColorHex, bgColorHex, borderColorHex, category
+        case accountId, kind, merchantRaw, merchantNormalized, notes, tags
+        case isExcludedFromBudget, isRecurringCandidate
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        icon = try container.decode(String.self, forKey: .icon)
+        title = try container.decode(String.self, forKey: .title)
+        subtitle = try container.decode(String.self, forKey: .subtitle)
+        time = try container.decode(String.self, forKey: .time)
+        amount = try container.decode(String.self, forKey: .amount)
+        isImpulse = try container.decode(Bool.self, forKey: .isImpulse)
+        iconColorHex = try container.decode(String.self, forKey: .iconColorHex)
+        bgColorHex = try container.decode(String.self, forKey: .bgColorHex)
+        borderColorHex = try container.decode(String.self, forKey: .borderColorHex)
+        category = try container.decode(SpendingCategory.self, forKey: .category)
+        accountId = try container.decodeIfPresent(UUID.self, forKey: .accountId)
+        kind = try container.decodeIfPresent(TransactionKind.self, forKey: .kind) ?? .spending
+        merchantRaw = try container.decodeIfPresent(String.self, forKey: .merchantRaw) ?? title
+        merchantNormalized = try container.decodeIfPresent(String.self, forKey: .merchantNormalized) ?? title
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        isExcludedFromBudget = try container.decodeIfPresent(Bool.self, forKey: .isExcludedFromBudget) ?? false
+        isRecurringCandidate = try container.decodeIfPresent(Bool.self, forKey: .isRecurringCandidate) ?? false
     }
 
     var iconColor: Color { Color(hex: iconColorHex) ?? .orange }
@@ -86,6 +264,15 @@ struct SpendingTransaction: Identifiable, Codable {
         let cleaned = amount
             .replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "+", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        return Double(cleaned) ?? 0
+    }
+
+    var amountSignedValue: Double {
+        let cleaned = amount
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
         return Double(cleaned) ?? 0
     }
 }
@@ -116,6 +303,10 @@ struct RecurringSubscription: Identifiable, Codable {
     let frequencyDays: Int?
     let frequencyKey: String?
     let nextBillingEpoch: TimeInterval?
+    let merchantMatchPattern: String?
+    let expectedAmountMin: Double?
+    let expectedAmountMax: Double?
+    let linkedTransactionIds: [UUID]
 
     init(
         id: UUID = UUID(),
@@ -128,7 +319,11 @@ struct RecurringSubscription: Identifiable, Codable {
         nextBilling: String,
         frequencyDays: Int? = nil,
         frequencyKey: String? = nil,
-        nextBillingEpoch: TimeInterval? = nil
+        nextBillingEpoch: TimeInterval? = nil,
+        merchantMatchPattern: String? = nil,
+        expectedAmountMin: Double? = nil,
+        expectedAmountMax: Double? = nil,
+        linkedTransactionIds: [UUID] = []
     ) {
         self.id = id
         self.name = name
@@ -141,6 +336,35 @@ struct RecurringSubscription: Identifiable, Codable {
         self.frequencyDays = frequencyDays
         self.frequencyKey = frequencyKey
         self.nextBillingEpoch = nextBillingEpoch
+        self.merchantMatchPattern = merchantMatchPattern
+        self.expectedAmountMin = expectedAmountMin
+        self.expectedAmountMax = expectedAmountMax
+        self.linkedTransactionIds = linkedTransactionIds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, plan, price, iconName, iconColorHex, bgColorHex
+        case nextBilling, frequencyDays, frequencyKey, nextBillingEpoch
+        case merchantMatchPattern, expectedAmountMin, expectedAmountMax, linkedTransactionIds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        plan = try container.decodeIfPresent(String.self, forKey: .plan)
+        price = try container.decode(Double.self, forKey: .price)
+        iconName = try container.decode(String.self, forKey: .iconName)
+        iconColorHex = try container.decode(String.self, forKey: .iconColorHex)
+        bgColorHex = try container.decode(String.self, forKey: .bgColorHex)
+        nextBilling = try container.decode(String.self, forKey: .nextBilling)
+        frequencyDays = try container.decodeIfPresent(Int.self, forKey: .frequencyDays)
+        frequencyKey = try container.decodeIfPresent(String.self, forKey: .frequencyKey)
+        nextBillingEpoch = try container.decodeIfPresent(TimeInterval.self, forKey: .nextBillingEpoch)
+        merchantMatchPattern = try container.decodeIfPresent(String.self, forKey: .merchantMatchPattern)
+        expectedAmountMin = try container.decodeIfPresent(Double.self, forKey: .expectedAmountMin)
+        expectedAmountMax = try container.decodeIfPresent(Double.self, forKey: .expectedAmountMax)
+        linkedTransactionIds = try container.decodeIfPresent([UUID].self, forKey: .linkedTransactionIds) ?? []
     }
 
     var iconColor: Color { Color(hex: iconColorHex) ?? .white }
@@ -180,8 +404,14 @@ class TransactionData {
     private let groupsKey = "penny_transaction_groups"
     private let budgetKey = "penny_daily_budget"
     private let subscriptionsKey = "penny_recurring_subscriptions"
+    private let defaultAccountId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
     private var isNormalizingGroups = false
     private var isSyncingRecurring = false
+
+    var accounts: [Account]
+    var budgetCategories: [BudgetCategory]
+    var merchantRules: [MerchantRule]
+    var savingsGoals: [SavingsGoal]
 
     var groups: [SpendingTransactionGroup] {
         didSet {
@@ -208,6 +438,10 @@ class TransactionData {
     private init() {
         let savedBudget = UserDefaults.standard.double(forKey: budgetKey)
         self.dailyBudget = savedBudget > 0 ? savedBudget : 170.0
+        self.accounts = TransactionData.sampleAccounts
+        self.budgetCategories = TransactionData.sampleBudgetCategories
+        self.merchantRules = TransactionData.sampleMerchantRules
+        self.savingsGoals = TransactionData.sampleSavingsGoals
 
         let loadedGroups: [SpendingTransactionGroup]
         if let data = UserDefaults.standard.data(forKey: groupsKey),
@@ -228,6 +462,14 @@ class TransactionData {
             self.subscriptions = [] // empty instead of sampleSubscriptions
         }
 
+        groups = groups.map { group in
+            SpendingTransactionGroup(
+                id: group.id,
+                title: group.title,
+                transactions: group.transactions.map { normalizeAndApplyRules(to: $0) }
+            )
+        }
+
         syncRecurringTransactions()
     }
 
@@ -241,6 +483,90 @@ class TransactionData {
         if let encoded = try? JSONEncoder().encode(subscriptions) {
             UserDefaults.standard.set(encoded, forKey: subscriptionsKey)
         }
+    }
+
+    func normalizeMerchant(_ merchant: String) -> String {
+        merchant
+            .uppercased()
+            .replacingOccurrences(of: #"^(SQ \*|TST\*|PAYPAL \*|APPLE\.COM/BILL )"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+\d{3,}$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"[^A-Z0-9& ]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .capitalized
+    }
+
+    func applyMerchantRules(to transaction: SpendingTransaction) -> SpendingTransaction {
+        guard let matchedRule = merchantRules.first(where: { rule in
+            transaction.title.localizedCaseInsensitiveContains(rule.matchPattern) ||
+            (transaction.merchantRaw?.localizedCaseInsensitiveContains(rule.matchPattern) ?? false)
+        }) else {
+            return transaction
+        }
+
+        return SpendingTransaction(
+            id: transaction.id,
+            icon: transaction.icon,
+            title: matchedRule.merchantDisplayName ?? transaction.title,
+            subtitle: (matchedRule.categoryOverride ?? transaction.category).rawValue,
+            time: transaction.time,
+            amount: transaction.amount,
+            isImpulse: transaction.isImpulse,
+            iconColor: (matchedRule.categoryOverride ?? transaction.category).color,
+            bgColor: (matchedRule.categoryOverride ?? transaction.category).color.opacity(0.1),
+            borderColor: (matchedRule.categoryOverride ?? transaction.category).color.opacity(0.2),
+            category: matchedRule.categoryOverride ?? transaction.category,
+            accountId: transaction.accountId ?? defaultSpendingAccount?.id,
+            kind: transaction.kind,
+            merchantRaw: transaction.merchantRaw ?? transaction.title,
+            merchantNormalized: matchedRule.merchantDisplayName ?? normalizeMerchant(transaction.merchantRaw ?? transaction.title),
+            notes: transaction.notes,
+            tags: transaction.tags,
+            isExcludedFromBudget: transaction.isExcludedFromBudget,
+            isRecurringCandidate: transaction.isRecurringCandidate || matchedRule.recurringHint
+        )
+    }
+
+    func normalizeAndApplyRules(to transaction: SpendingTransaction) -> SpendingTransaction {
+        let normalizedMerchant = normalizeMerchant(transaction.merchantRaw ?? transaction.title)
+        let normalized = SpendingTransaction(
+            id: transaction.id,
+            icon: transaction.icon,
+            title: transaction.title,
+            subtitle: transaction.subtitle,
+            time: transaction.time,
+            amount: transaction.amount,
+            isImpulse: transaction.isImpulse,
+            iconColor: transaction.iconColor,
+            bgColor: transaction.bgColor,
+            borderColor: transaction.borderColor,
+            category: transaction.category,
+            accountId: transaction.accountId ?? defaultSpendingAccount?.id,
+            kind: transaction.kind,
+            merchantRaw: transaction.merchantRaw ?? transaction.title,
+            merchantNormalized: normalizedMerchant,
+            notes: transaction.notes,
+            tags: transaction.tags,
+            isExcludedFromBudget: transaction.isExcludedFromBudget,
+            isRecurringCandidate: transaction.isRecurringCandidate || detectRecurringCandidate(for: normalizedMerchant)
+        )
+        return applyMerchantRules(to: normalized)
+    }
+
+    func detectRecurringCandidate(for merchant: String) -> Bool {
+        let recurringMatches = allTransactions.filter {
+            ($0.merchantNormalized ?? normalizeMerchant($0.title)) == merchant
+        }
+        return recurringMatches.count >= 2
+    }
+
+    func detectRecurringCandidates() -> [String] {
+        Dictionary(grouping: allTransactions) {
+            $0.merchantNormalized ?? normalizeMerchant($0.title)
+        }
+        .filter { _, txns in txns.count >= 2 }
+        .keys
+        .sorted()
     }
 
     private static func groupsWithTransactionsSortedByTime(_ groups: [SpendingTransactionGroup]) -> [SpendingTransactionGroup] {
@@ -433,7 +759,11 @@ class TransactionData {
                     nextBilling: nextBillingString,
                     frequencyDays: updated[index].frequencyDays,
                     frequencyKey: updated[index].frequencyKey,
-                    nextBillingEpoch: nextDate.timeIntervalSince1970
+                    nextBillingEpoch: nextDate.timeIntervalSince1970,
+                    merchantMatchPattern: updated[index].merchantMatchPattern,
+                    expectedAmountMin: updated[index].expectedAmountMin,
+                    expectedAmountMax: updated[index].expectedAmountMax,
+                    linkedTransactionIds: updated[index].linkedTransactionIds
                 )
             }
         }
@@ -488,7 +818,13 @@ class TransactionData {
             iconColor: SpendingCategory.subscriptions.color,
             bgColor: SpendingCategory.subscriptions.color.opacity(0.1),
             borderColor: SpendingCategory.subscriptions.color.opacity(0.2),
-            category: .subscriptions
+            category: .subscriptions,
+            accountId: defaultSpendingAccount?.id,
+            kind: .spending,
+            merchantRaw: sub.name,
+            merchantNormalized: normalizeMerchant(sub.merchantMatchPattern ?? sub.name),
+            tags: ["recurring"],
+            isRecurringCandidate: true
         )
 
         if let index = groups.firstIndex(where: { $0.title == dayLabel }) {
@@ -516,24 +852,132 @@ class TransactionData {
     }
 
     // MARK: - Computed Analytics
+    var defaultSpendingAccount: Account? {
+        accounts.first(where: { $0.id == defaultAccountId }) ?? accounts.first
+    }
+
     var allTransactions: [SpendingTransaction] {
         groups.flatMap { $0.transactions }
     }
 
+    var budgetableTransactions: [SpendingTransaction] {
+        allTransactions.filter {
+            $0.kind == .spending && !$0.isExcludedFromBudget && !excludedCategories.contains($0.category)
+        }
+    }
+
+    var incomeTransactions: [SpendingTransaction] {
+        allTransactions.filter { $0.kind == .income }
+    }
+
+    var transferTransactions: [SpendingTransaction] {
+        allTransactions.filter { $0.kind == .transfer }
+    }
+
+    var excludedCategories: Set<SpendingCategory> {
+        Set(budgetCategories.filter(\.isExcluded).map(\.category))
+    }
+
+    func transactions(
+        forMonth date: Date = Date(),
+        category: SpendingCategory? = nil,
+        accountId: UUID? = nil,
+        kind: TransactionKind? = nil
+    ) -> [SpendingTransaction] {
+        allTransactions.filter { transaction in
+            let matchesMonth = Self.resolvedDate(forGroupTitle: groupTitle(for: transaction.id), now: date)
+                .map { Calendar.current.isDate($0, equalTo: date, toGranularity: .month) } ?? false
+            let matchesCategory = category.map { transaction.category == $0 } ?? true
+            let matchesAccount = accountId.map { transaction.accountId == $0 } ?? true
+            let matchesKind = kind.map { transaction.kind == $0 } ?? true
+            return matchesMonth && matchesCategory && matchesAccount && matchesKind
+        }
+    }
+
+    private func groupTitle(for transactionId: UUID) -> String {
+        groups.first(where: { group in
+            group.transactions.contains(where: { $0.id == transactionId })
+        })?.title ?? "Today"
+    }
+
     var totalSpent: Double {
-        allTransactions.reduce(0) { $0 + $1.amountValue }
+        budgetableTransactions.reduce(0) { $0 + $1.amountValue }
     }
 
     var transactionCount: Int {
-        allTransactions.count
+        budgetableTransactions.count
+    }
+
+    var monthToDateTransactions: [SpendingTransaction] {
+        transactions(forMonth: Date())
+    }
+
+    var monthlySpent: Double {
+        monthToDateTransactions
+            .filter { $0.kind == .spending && !$0.isExcludedFromBudget && !excludedCategories.contains($0.category) }
+            .reduce(0) { $0 + $1.amountValue }
+    }
+
+    var monthlyIncome: Double {
+        monthToDateTransactions
+            .filter { $0.kind == .income }
+            .reduce(0) { $0 + $1.amountSignedValue }
+    }
+
+    var monthlyNet: Double {
+        monthlyIncome - monthlySpent
+    }
+
+    func spendingByCategory(forMonth date: Date = Date()) -> [SpendingCategory: Double] {
+        transactions(forMonth: date).reduce(into: [SpendingCategory: Double]()) { result, transaction in
+            guard transaction.kind == .spending else { return }
+            guard !transaction.isExcludedFromBudget else { return }
+            guard !excludedCategories.contains(transaction.category) else { return }
+            result[transaction.category, default: 0] += transaction.amountValue
+        }
+    }
+
+    func monthToDateComparison(referenceDate: Date = Date()) -> MonthlyComparison {
+        let calendar = Calendar.current
+        let previousDate = calendar.date(byAdding: .month, value: -1, to: referenceDate) ?? referenceDate
+        let currentTotal = spendingByCategory(forMonth: referenceDate).values.reduce(0, +)
+        let previousTotal = spendingByCategory(forMonth: previousDate).values.reduce(0, +)
+        return MonthlyComparison(current: currentTotal, previous: previousTotal)
+    }
+
+    var upcomingRecurringTotal: Double {
+        let calendar = Calendar.current
+        let now = Date()
+        return subscriptions.reduce(0) { running, subscription in
+            guard let epoch = subscription.nextBillingEpoch else { return running }
+            let nextDate = Date(timeIntervalSince1970: epoch)
+            guard calendar.isDate(nextDate, equalTo: now, toGranularity: .month) || nextDate > now else {
+                return running
+            }
+            return running + subscription.price
+        }
+    }
+
+    var totalMonthlyBudget: Double {
+        budgetCategories
+            .filter { !$0.isExcluded }
+            .reduce(0) { $0 + $1.monthlyBudget }
+    }
+
+    var safeToSpendThisMonth: Double {
+        max(totalMonthlyBudget - monthlySpent - upcomingRecurringTotal, 0)
+    }
+
+    var totalGoalTarget: Double {
+        savingsGoals.reduce(0) { $0 + $1.targetAmount }
+    }
+
+    var totalGoalProgress: Double {
+        savingsGoals.reduce(0) { $0 + $1.currentAmount }
     }
 
     var categoryTotals: [CategoryData] {
-        var totals: [SpendingCategory: Double] = [:]
-        for t in allTransactions {
-            totals[t.category, default: 0] += t.amountValue
-        }
-        return totals
+        spendingByCategory()
             .sorted { $0.value > $1.value }
             .map { CategoryData(name: $0.key.rawValue, color: $0.key.color, amount: $0.value, total: totalSpent) }
     }
@@ -591,6 +1035,45 @@ class TransactionData {
         SeedTemplate(title: "ClassPass", subtitle: "Fitness", icon: "figure.run", category: .fitness, amountRange: 39...109, canBeImpulse: false, canAutoPay: true),
     ]
 
+    static var sampleAccounts: [Account] {
+        let primaryId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
+        return [
+            Account(id: primaryId, name: "Daily Checking", type: .checking, institution: "Chase", balance: 4821.17),
+            Account(name: "Rainy Day Savings", type: .savings, institution: "Ally", balance: 12340.42),
+            Account(name: "Freedom Card", type: .creditCard, institution: "Chase", balance: -742.88),
+            Account(name: "Brokerage", type: .investment, institution: "Fidelity", balance: 18550.00),
+        ]
+    }
+
+    static var sampleBudgetCategories: [BudgetCategory] = [
+        BudgetCategory(category: .dining, monthlyBudget: 450),
+        BudgetCategory(category: .transport, monthlyBudget: 220),
+        BudgetCategory(category: .shopping, monthlyBudget: 400),
+        BudgetCategory(category: .entertainment, monthlyBudget: 180),
+        BudgetCategory(category: .groceries, monthlyBudget: 520),
+        BudgetCategory(category: .utilities, monthlyBudget: 240),
+        BudgetCategory(category: .fitness, monthlyBudget: 180),
+        BudgetCategory(category: .subscriptions, monthlyBudget: 120),
+        BudgetCategory(category: .lifestyle, monthlyBudget: 240),
+        BudgetCategory(category: .other, monthlyBudget: 150),
+    ]
+
+    static var sampleMerchantRules: [MerchantRule] = [
+        MerchantRule(matchPattern: "spotify", categoryOverride: .subscriptions, merchantDisplayName: "Spotify", recurringHint: true),
+        MerchantRule(matchPattern: "netflix", categoryOverride: .subscriptions, merchantDisplayName: "Netflix", recurringHint: true),
+        MerchantRule(matchPattern: "uber", categoryOverride: .transport, merchantDisplayName: "Uber", recurringHint: false),
+        MerchantRule(matchPattern: "trader joe", categoryOverride: .groceries, merchantDisplayName: "Trader Joe's", recurringHint: false),
+        MerchantRule(matchPattern: "blue bottle", categoryOverride: .lifestyle, merchantDisplayName: "Blue Bottle", recurringHint: false),
+    ]
+
+    static var sampleSavingsGoals: [SavingsGoal] {
+        let defaultAccountId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
+        return [
+            SavingsGoal(name: "Emergency Fund", targetAmount: 15000, currentAmount: 12340.42, linkedAccountId: defaultAccountId),
+            SavingsGoal(name: "Summer Trip", targetAmount: 2500, currentAmount: 940),
+        ]
+    }
+
     static var sampleGroups: [SpendingTransactionGroup] {
         generateInitialGroups()
     }
@@ -633,7 +1116,13 @@ class TransactionData {
                     iconColor: categoryColor.opacity(0.90),
                     bgColor: categoryColor.opacity(0.10),
                     borderColor: categoryColor.opacity(0.20),
-                    category: template.category
+                    category: template.category,
+                    accountId: sampleAccounts.first?.id,
+                    kind: .spending,
+                    merchantRaw: template.title,
+                    merchantNormalized: template.title,
+                    tags: useAutoPay ? ["recurring"] : [],
+                    isRecurringCandidate: useAutoPay
                 )
                 dayTransactions.append(transaction)
             }
@@ -677,11 +1166,11 @@ class TransactionData {
 
     // Keeping this here is fine, but it is no longer used for default seeding
     static var sampleSubscriptions: [RecurringSubscription] = [
-        RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: "May 12"),
-        RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: "May 15"),
-        RecurringSubscription(name: "Notion", plan: nil, price: 8.00, iconName: "notion", iconColor: .black, bgColor: .white, nextBilling: "May 18"),
-        RecurringSubscription(name: "YouTube", plan: "Premium", price: 13.99, iconName: "youtube", iconColor: .white, bgColor: Color(red: 1.0, green: 0.0, blue: 0.0), nextBilling: "May 20"),
-        RecurringSubscription(name: "Equinox", plan: "Monthly", price: 95.00, iconName: "dumbbell.fill", iconColor: .white, bgColor: Color(red: 0.1, green: 0.1, blue: 0.1), nextBilling: "May 1"),
-        RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: "May 5"),
+        RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: "May 12", merchantMatchPattern: "Netflix", expectedAmountMin: 18.99, expectedAmountMax: 21.99),
+        RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: "May 15", merchantMatchPattern: "Spotify", expectedAmountMin: 9.99, expectedAmountMax: 12.99),
+        RecurringSubscription(name: "Notion", plan: nil, price: 8.00, iconName: "notion", iconColor: .black, bgColor: .white, nextBilling: "May 18", merchantMatchPattern: "Notion", expectedAmountMin: 8.00, expectedAmountMax: 8.00),
+        RecurringSubscription(name: "YouTube", plan: "Premium", price: 13.99, iconName: "youtube", iconColor: .white, bgColor: Color(red: 1.0, green: 0.0, blue: 0.0), nextBilling: "May 20", merchantMatchPattern: "YouTube", expectedAmountMin: 12.99, expectedAmountMax: 14.99),
+        RecurringSubscription(name: "Equinox", plan: "Monthly", price: 95.00, iconName: "dumbbell.fill", iconColor: .white, bgColor: Color(red: 0.1, green: 0.1, blue: 0.1), nextBilling: "May 1", merchantMatchPattern: "Equinox", expectedAmountMin: 95.00, expectedAmountMax: 95.00),
+        RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: "May 5", merchantMatchPattern: "iCloud", expectedAmountMin: 2.99, expectedAmountMax: 2.99),
     ]
 }

@@ -557,7 +557,15 @@ struct EditTransactionView: View {
             iconColor: selectedCategory.color,
             bgColor: selectedCategory.color.opacity(0.1),
             borderColor: selectedCategory.color.opacity(0.2),
-            category: selectedCategory
+            category: selectedCategory,
+            accountId: transaction.accountId,
+            kind: transaction.kind,
+            merchantRaw: merchantName.isEmpty ? transaction.merchantRaw : merchantName,
+            merchantNormalized: merchantName.isEmpty ? transaction.merchantNormalized : data.normalizeMerchant(merchantName),
+            notes: transaction.notes,
+            tags: transaction.tags,
+            isExcludedFromBudget: transaction.isExcludedFromBudget,
+            isRecurringCandidate: transaction.isRecurringCandidate
         )
 
         // Remove from original group

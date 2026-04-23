@@ -14,14 +14,17 @@ struct SpendingHomeView: View {
     @State private var showTransactions = false
     @State private var showRecurring = false
     @State private var selectedTrendPeriod: TrendPeriod = .weekly
+    @AppStorage("penny.profile.name") private var storedProfileName: String = "Alex Rivers"
             
     @Environment(TransactionData.self) private var data
 
     var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
-        if hour < 12 { return "Good morning" }
-        else if hour < 17 { return "Good afternoon" }
-        else { return "Good evening" }
+        let dayGreeting: String
+        if hour < 12 { dayGreeting = "Good morning" }
+        else if hour < 17 { dayGreeting = "Good afternoon" }
+        else { dayGreeting = "Good evening" }
+        return "\(dayGreeting), \(firstName)"
     }
 
     var todayString: String {
@@ -30,16 +33,43 @@ struct SpendingHomeView: View {
         return f.string(from: Date())
     }
 
+    private var firstName: String {
+        let trimmed = storedProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawFirst = trimmed.split(separator: " ").first.map(String.init) ?? "Alex"
+        return rawFirst.isEmpty ? "Alex" : rawFirst
+    }
+
     // Now pulls from your real recurring subscriptions instead of hardcoded values
     var upcomingRecurring: [RecurringSubscription] {
         Array(data.subscriptions.prefix(3))
     }
 
     var spendingInsight: String {
-        let topCat = data.topCategories.first?.name ?? "spending"
-        let topAmt = data.topCategories.first?.amount ?? 0
-        let pct = data.totalSpent > 0 ? Int((topAmt / data.totalSpent) * 100) : 0
-        return "\(pct)% of your spending is on \(topCat.lowercased()) this week"
+        let comparison = data.monthToDateComparison()
+        let direction = comparison.delta <= 0 ? "down" : "up"
+        let percent = Int(abs(comparison.percentChange) * 100)
+        let safe = Int(data.safeToSpendThisMonth.rounded())
+        return "Spending is \(direction) \(percent)% vs last month. You still have about $\(safe) safe to spend."
+    }
+
+    private var monthlyBudgetProgress: Double {
+        guard data.totalMonthlyBudget > 0 else { return 0 }
+        return min(data.monthlySpent / data.totalMonthlyBudget, 1.0)
+    }
+
+    private var monthlyComparison: MonthlyComparison {
+        data.monthToDateComparison()
+    }
+
+    private var monthlyComparisonLabel: String {
+        let direction = monthlyComparison.delta <= 0 ? "less" : "more"
+        return "\(Int(abs(monthlyComparison.percentChange) * 100))% \(direction) than last month"
+    }
+
+    private var monthlyComparisonColor: Color {
+        monthlyComparison.delta <= 0
+            ? Color(red: 0.29, green: 0.87, blue: 0.50)
+            : Color(red: 1.0, green: 0.42, blue: 0.16)
     }
 
     private var trendData: [(label: String, total: Double)] {
@@ -202,6 +232,10 @@ struct SpendingHomeView: View {
                             .padding(.bottom, 8)
 
                         budgetRingCard
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 8)
+
+                        monthOverviewSection
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
 
@@ -398,7 +432,7 @@ struct SpendingHomeView: View {
                     .frame(width: 80, height: 80)
 
                 Circle()
-                    .trim(from: 0, to: min(CGFloat(data.dailySpent / data.dailyBudget), 1.0))
+                    .trim(from: 0, to: monthlyBudgetProgress)
                     .stroke(
                         LinearGradient(
                             colors: [
@@ -414,7 +448,7 @@ struct SpendingHomeView: View {
                     .rotationEffect(.degrees(-90))
 
                 VStack(spacing: 1) {
-                    Text("\(Int((data.dailySpent / data.dailyBudget) * 100))%")
+                    Text("\(Int(monthlyBudgetProgress * 100))%")
                         .font(.system(size: 16, weight: .semibold, design: .serif))
                         .foregroundColor(.white)
                     Text("used")
@@ -425,11 +459,11 @@ struct SpendingHomeView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("DAILY BUDGET")
+                    Text("MONTHLY BUDGET")
                         .font(.system(size: 9, weight: .medium))
                         .tracking(1.5)
                         .foregroundColor(.white.opacity(0.4))
-                    Text("$\(String(format: "%.2f", data.dailyRemaining)) left")
+                    Text("$\(String(format: "%.2f", max(data.totalMonthlyBudget - data.monthlySpent, 0))) left")
                         .font(.system(size: 20, weight: .light, design: .serif))
                         .foregroundColor(.white)
                 }
@@ -452,7 +486,7 @@ struct SpendingHomeView: View {
                                 )
                             )
                             .frame(
-                                width: geo.size.width * min(CGFloat(data.dailySpent / data.dailyBudget), 1.0),
+                                width: geo.size.width * monthlyBudgetProgress,
                                 height: 6
                             )
                     }
@@ -460,13 +494,13 @@ struct SpendingHomeView: View {
                 .frame(height: 6)
 
                 HStack {
-                    Text("$\(String(format: "%.2f", data.dailySpent)) spent")
+                    Text("$\(String(format: "%.2f", data.monthlySpent)) spent")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundColor(.white.opacity(0.4))
 
                     Spacer()
 
-                    Text("of $\(String(format: "%.0f", data.dailyBudget))")
+                    Text("of $\(String(format: "%.0f", data.totalMonthlyBudget))")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundColor(.white.opacity(0.25))
                 }
@@ -479,6 +513,43 @@ struct SpendingHomeView: View {
                 .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.06), lineWidth: 1))
                 .shadow(color: .black.opacity(0.4), radius: 15, x: 0, y: 5)
         )
+    }
+
+    private var monthOverviewSection: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                monthMetricCard(
+                    title: "SAFE TO SPEND",
+                    value: "$\(String(format: "%.0f", data.safeToSpendThisMonth))",
+                    subtitle: "after upcoming bills",
+                    accent: Color(red: 0.29, green: 0.87, blue: 0.50)
+                )
+
+                monthMetricCard(
+                    title: "UPCOMING BILLS",
+                    value: "$\(String(format: "%.0f", data.upcomingRecurringTotal))",
+                    subtitle: "\(upcomingRecurring.count) recurring charges",
+                    accent: Color(red: 0.38, green: 0.65, blue: 0.98)
+                )
+            }
+
+            HStack(spacing: 10) {
+                monthMetricCard(
+                    title: "MONTHLY NET",
+                    value: currencyString(data.monthlyNet),
+                    subtitle: data.monthlyIncome > 0 ? "income minus spend" : "no income tracked yet",
+                    accent: data.monthlyNet >= 0 ? Color(red: 0.29, green: 0.87, blue: 0.50) : Color(red: 1.0, green: 0.42, blue: 0.16)
+                )
+
+                monthMetricCard(
+                    title: "VS LAST MONTH",
+                    value: monthlyComparisonLabel,
+                    subtitle: "month to date",
+                    accent: monthlyComparisonColor,
+                    compact: true
+                )
+            }
+        }
     }
 
     // MARK: - Insight Banner
@@ -508,6 +579,50 @@ struct SpendingHomeView: View {
                 .fill(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.07))
                 .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.15), lineWidth: 1))
         )
+    }
+
+    private func monthMetricCard(
+        title: String,
+        value: String,
+        subtitle: String,
+        accent: Color,
+        compact: Bool = false
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 9, weight: .medium))
+                .tracking(1.5)
+                .foregroundColor(.white.opacity(0.4))
+
+            Text(value)
+                .font(.system(size: compact ? 16 : 20, weight: .light, design: .serif))
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 6, height: 6)
+
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.white.opacity(0.45))
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.04))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.06), lineWidth: 1))
+        )
+    }
+
+    private func currencyString(_ value: Double) -> String {
+        let sign = value < 0 ? "-" : ""
+        return "\(sign)$\(String(format: "%.0f", abs(value)))"
     }
 
     // MARK: - Category Pills

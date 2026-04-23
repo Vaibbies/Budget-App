@@ -199,7 +199,10 @@ struct AddRecurringView: View {
                         nextBilling: nextBillingString,
                         frequencyDays: selectedFrequency.days,
                         frequencyKey: selectedFrequency.storageKey,
-                        nextBillingEpoch: selectedFrequency.advanced(from: Calendar.current.startOfDay(for: startDate)).timeIntervalSince1970
+                        nextBillingEpoch: selectedFrequency.advanced(from: Calendar.current.startOfDay(for: startDate)).timeIntervalSince1970,
+                        merchantMatchPattern: cleanName,
+                        expectedAmountMin: enteredPrice,
+                        expectedAmountMax: enteredPrice
                     )
 
                     data.addSubscription(
