@@ -13,8 +13,14 @@ private enum TransactionsTheme {
 
 // MARK: - TransactionsView
 struct TransactionsView: View {
+    enum Scope: Equatable {
+        case all
+        case today
+    }
+
     @Environment(\.dismiss) var dismiss
     private var data = TransactionData.shared
+    private let scope: Scope
     @State private var showAddTransaction = false
     @State private var editingInfo: EditInfo? = nil
 
@@ -26,7 +32,51 @@ struct TransactionsView: View {
         let txIndex: Int
     }
 
+    init(scope: Scope = .all) {
+        self.scope = scope
+    }
+
+    private var visibleGroups: [(groupIndex: Int, group: SpendingTransactionGroup)] {
+        switch scope {
+        case .all:
+            return Array(data.groups.enumerated()).map { ($0.offset, $0.element) }
+        case .today:
+            return Array(data.groups.enumerated()).filter { _, group in
+                data.isGroupInToday(group)
+            }.map { ($0.offset, $0.element) }
+        }
+    }
+
+    private var totalVisibleSpent: Double {
+        switch scope {
+        case .all:
+            return visibleGroups.reduce(0) { running, item in
+                running + item.group.transactions.reduce(0) { $0 + $1.amountValue }
+            }
+        case .today:
+            return data.dailySpent
+        }
+    }
+
+    private var headerTitle: String {
+        switch scope {
+        case .all: return "TRANSACTIONS"
+        case .today: return "TODAY"
+        }
+    }
+
+    private var spentSectionTitle: String {
+        switch scope {
+        case .all: return "SPENT THIS WEEK"
+        case .today: return "SPENT TODAY"
+        }
+    }
+
     private var recentDayTotals: [(label: String, total: Double)] {
+        if scope == .today {
+            return [("TOD", totalVisibleSpent)]
+        }
+
         let totals = data.groups.prefix(6).map { group in
             (label: String(group.title.prefix(3)).uppercased(),
              total: group.transactions.reduce(0) { $0 + $1.amountValue })
@@ -45,7 +95,9 @@ struct TransactionsView: View {
                 spentSection
 
                 List {
-                    ForEach(Array(data.groups.enumerated()), id: \.element.id) { groupIndex, group in
+                    ForEach(visibleGroups, id: \.group.id) { entry in
+                        let groupIndex = entry.groupIndex
+                        let group = entry.group
                         Section {
                             ForEach(Array(group.transactions.enumerated()), id: \.element.id) { txIndex, transaction in
                                 fullTransactionRow(transaction)
@@ -54,7 +106,7 @@ struct TransactionsView: View {
                                     .listRowBackground(Color.clear)
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                         Button(role: .destructive) {
-                                            deleteTransaction(groupIndex: groupIndex, txIndex: txIndex)
+                                            deleteTransaction(groupIndex: groupIndex, txIndex: txIndex, transactionId: transaction.id)
                                         } label: {
                                             Label("Delete", systemImage: "trash")
                                         }
@@ -151,7 +203,7 @@ struct TransactionsView: View {
 
             Spacer()
 
-            Text("TRANSACTIONS")
+            Text(headerTitle)
                 .font(.system(size: 12, weight: .medium))
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.5))
@@ -181,12 +233,12 @@ struct TransactionsView: View {
     // MARK: - Spent This Week
     private var spentSection: some View {
         VStack(spacing: 10) {
-            Text("SPENT THIS WEEK")
+            Text(spentSectionTitle)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(TransactionsTheme.muted)
                 .tracking(2)
 
-            Text("$\(String(format: "%.2f", data.totalSpent))")
+            Text("$\(String(format: "%.2f", scope == .today ? totalVisibleSpent : data.totalSpent))")
                 .font(.system(size: 48, weight: .regular, design: .serif))
                 .foregroundColor(.white)
                 .tracking(-1)
@@ -218,17 +270,20 @@ struct TransactionsView: View {
     }
 
     // MARK: - Delete
-    private func deleteTransaction(groupIndex: Int, txIndex: Int) {
+    private func deleteTransaction(groupIndex: Int, txIndex: Int, transactionId: UUID) {
         Haptics.medium()
-        var updatedTransactions = data.groups[groupIndex].transactions
-        updatedTransactions.remove(at: txIndex)
-        if updatedTransactions.isEmpty {
-            data.groups.remove(at: groupIndex)
-        } else {
-            data.groups[groupIndex] = SpendingTransactionGroup(
-                title: data.groups[groupIndex].title,
-                transactions: updatedTransactions
-            )
+        if !data.removeTransaction(id: transactionId) {
+            var updatedTransactions = data.groups[groupIndex].transactions
+            updatedTransactions.remove(at: txIndex)
+            if updatedTransactions.isEmpty {
+                data.groups.remove(at: groupIndex)
+            } else {
+                data.groups[groupIndex] = SpendingTransactionGroup(
+                    id: data.groups[groupIndex].id,
+                    title: data.groups[groupIndex].title,
+                    transactions: updatedTransactions
+                )
+            }
         }
     }
 

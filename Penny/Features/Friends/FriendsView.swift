@@ -15,6 +15,9 @@ struct FriendsView: View {
     private var pendingCount: Int { FriendsData.pendingRequests.count + FriendsData.sentRequests.count }
     private var activeSharedCount: Int { FriendsData.sharedExpenses.filter { $0.type != .settled }.count }
     private var friendCount: Int { FriendsData.allFriends.count }
+    private var hasAnyData: Bool {
+        pendingCount > 0 || activeSharedCount > 0 || friendCount > 0 || FriendsData.settlementBalance != 0
+    }
 
     var body: some View {
         ZStack {
@@ -39,7 +42,15 @@ struct FriendsView: View {
                         quickStatsRow
                             .padding(.horizontal, 24)
 
-                        if selectedFilter == .overview || selectedFilter == .expenses {
+                        if !hasAnyData && selectedFilter == .overview {
+                            sectionEmptyState(
+                                title: "No friend activity yet",
+                                subtitle: "Add friends and shared expenses later. This tab will track requests, splits, and balances when you start using it."
+                            )
+                            .padding(.horizontal, 24)
+                        }
+
+                        if (selectedFilter == .overview || selectedFilter == .expenses) && !FriendsData.sharedExpenses.isEmpty {
                             FriendsChartsSection()
                                 .padding(.horizontal, 24)
                         }
@@ -71,8 +82,16 @@ struct FriendsView: View {
                         }
 
                         if selectedFilter == .overview || selectedFilter == .people {
-                            AllFriendsSection()
+                            if !FriendsData.allFriends.isEmpty {
+                                AllFriendsSection()
+                                    .padding(.horizontal, 24)
+                            } else if selectedFilter == .people {
+                                sectionEmptyState(
+                                    title: "No friends added yet",
+                                    subtitle: "People you split with will appear here once you add them."
+                                )
                                 .padding(.horizontal, 24)
+                            }
                         }
 
                         Color.clear.frame(height: 100)
@@ -192,7 +211,7 @@ struct FriendsView: View {
 
 // MARK: - Charts Section
 struct FriendsChartsSection: View {
-    private let weeklySplitTotals: [Double] = [38, 54, 31, 62, 45, 71, 58]
+    private let weeklySplitTotals: [Double] = []
     private var friendBars: [(name: String, amount: Double)] {
         FriendsData.allFriends
             .filter { $0.amount != 0 }
@@ -217,60 +236,64 @@ struct FriendsChartsSection: View {
                 .tracking(1.8)
                 .foregroundColor(.white.opacity(0.45))
 
-            GeometryReader { geo in
-                let width = geo.size.width
-                let height = geo.size.height
-                let maxValue = max(weeklySplitTotals.max() ?? 1, 1)
-                let minValue = min(weeklySplitTotals.min() ?? 0, 0)
-                let range = max(maxValue - minValue, 1)
-                let points = weeklySplitTotals.enumerated().map { index, value in
-                    CGPoint(
-                        x: width * CGFloat(index) / CGFloat(max(weeklySplitTotals.count - 1, 1)),
-                        y: height - ((CGFloat(value - minValue) / CGFloat(range)) * height)
-                    )
-                }
-
-                ZStack(alignment: .bottomLeading) {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.white.opacity(0.03))
-
-                    VStack(spacing: 0) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            Rectangle()
-                                .fill(Color.white.opacity(0.06))
-                                .frame(height: 1)
-                            Spacer()
-                        }
+            if weeklySplitTotals.isEmpty {
+                emptyChartCard("No split trend yet")
+            } else {
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    let height = geo.size.height
+                    let maxValue = max(weeklySplitTotals.max() ?? 1, 1)
+                    let minValue = min(weeklySplitTotals.min() ?? 0, 0)
+                    let range = max(maxValue - minValue, 1)
+                    let points = weeklySplitTotals.enumerated().map { index, value in
+                        CGPoint(
+                            x: width * CGFloat(index) / CGFloat(max(weeklySplitTotals.count - 1, 1)),
+                            y: height - ((CGFloat(value - minValue) / CGFloat(range)) * height)
+                        )
                     }
-                    .padding(.vertical, 8)
 
-                    SparklineAreaShape(points: points)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.30),
-                                    Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.02)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
+                    ZStack(alignment: .bottomLeading) {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white.opacity(0.03))
+
+                        VStack(spacing: 0) {
+                            ForEach(0..<3, id: \.self) { _ in
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.06))
+                                    .frame(height: 1)
+                                Spacer()
+                            }
+                        }
+                        .padding(.vertical, 8)
+
+                        SparklineAreaShape(points: points)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.30),
+                                        Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.02)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
                             )
-                        )
 
-                    SparklineShape(points: points)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 1.0, green: 0.58, blue: 0.35),
-                                    Color(red: 1.0, green: 0.42, blue: 0.16)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
-                        )
+                        SparklineShape(points: points)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.58, blue: 0.35),
+                                        Color(red: 1.0, green: 0.42, blue: 0.16)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+                            )
+                    }
                 }
+                .frame(height: 108)
             }
-            .frame(height: 108)
         }
         .padding(14)
         .background(
@@ -290,9 +313,13 @@ struct FriendsChartsSection: View {
                 .tracking(1.8)
                 .foregroundColor(.white.opacity(0.45))
 
-            VStack(spacing: 10) {
-                ForEach(Array(friendBars.enumerated()), id: \.offset) { _, entry in
-                    friendBarRow(name: entry.name, amount: entry.amount)
+            if friendBars.isEmpty {
+                emptyChartCard("No balances with friends")
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(Array(friendBars.enumerated()), id: \.offset) { _, entry in
+                        friendBarRow(name: entry.name, amount: entry.amount)
+                    }
                 }
             }
         }
@@ -336,6 +363,17 @@ struct FriendsChartsSection: View {
             }
             .frame(height: 8)
         }
+    }
+
+    private func emptyChartCard(_ title: String) -> some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(Color.white.opacity(0.03))
+            .frame(height: 108)
+            .overlay(
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            )
     }
 }
 
@@ -468,14 +506,36 @@ struct AllFriendsSection: View {
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.4))
 
-            VStack(spacing: 0) {
-                ForEach(friends) { friend in
-                    FriendRow(friend: friend)
+            if friends.isEmpty {
+                VStack(spacing: 6) {
+                    Text("No people yet")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text("People you add for splits and requests will appear here.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.5))
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white.opacity(0.04))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(friends) { friend in
+                        FriendRow(friend: friend)
 
-                    if friend.id != friends.last?.id {
-                        Divider()
-                            .background(Color.white.opacity(0.08))
-                            .padding(.leading, 56)
+                        if friend.id != friends.last?.id {
+                            Divider()
+                                .background(Color.white.opacity(0.08))
+                                .padding(.leading, 56)
+                        }
                     }
                 }
             }

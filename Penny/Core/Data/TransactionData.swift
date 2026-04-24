@@ -403,12 +403,17 @@ class TransactionData {
 
     private let groupsKey = "penny_transaction_groups"
     private let budgetKey = "penny_daily_budget"
+    private let monthlyBudgetKey = "penny_monthly_budget"
     private let subscriptionsKey = "penny_recurring_subscriptions"
+    private let accountsKey = "penny_accounts"
+    private let manualV1ResetKey = "penny_manual_v1_reset_complete"
     private let defaultAccountId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
     private var isNormalizingGroups = false
     private var isSyncingRecurring = false
 
-    var accounts: [Account]
+    var accounts: [Account] {
+        didSet { saveAccounts() }
+    }
     var budgetCategories: [BudgetCategory]
     var merchantRules: [MerchantRule]
     var savingsGoals: [SavingsGoal]
@@ -435,16 +440,37 @@ class TransactionData {
         didSet { UserDefaults.standard.set(dailyBudget, forKey: budgetKey) }
     }
 
+    var manualMonthlyBudget: Double {
+        didSet { UserDefaults.standard.set(manualMonthlyBudget, forKey: monthlyBudgetKey) }
+    }
+
     private init() {
-        let savedBudget = UserDefaults.standard.double(forKey: budgetKey)
-        self.dailyBudget = savedBudget > 0 ? savedBudget : 170.0
-        self.accounts = TransactionData.sampleAccounts
+        let defaults = UserDefaults.standard
+
+        if !defaults.bool(forKey: manualV1ResetKey) {
+            defaults.removeObject(forKey: groupsKey)
+            defaults.removeObject(forKey: subscriptionsKey)
+            defaults.removeObject(forKey: accountsKey)
+            defaults.set(0, forKey: budgetKey)
+            defaults.set(true, forKey: manualV1ResetKey)
+        }
+
+        let savedBudget = defaults.double(forKey: budgetKey)
+        self.dailyBudget = savedBudget > 0 ? savedBudget : 0.0
+        let savedMonthlyBudget = defaults.double(forKey: monthlyBudgetKey)
+        self.manualMonthlyBudget = savedMonthlyBudget > 0 ? savedMonthlyBudget : 0.0
+        if let data = defaults.data(forKey: accountsKey),
+           let decoded = try? JSONDecoder().decode([Account].self, from: data) {
+            self.accounts = decoded
+        } else {
+            self.accounts = []
+        }
         self.budgetCategories = TransactionData.sampleBudgetCategories
         self.merchantRules = TransactionData.sampleMerchantRules
         self.savingsGoals = TransactionData.sampleSavingsGoals
 
         let loadedGroups: [SpendingTransactionGroup]
-        if let data = UserDefaults.standard.data(forKey: groupsKey),
+        if let data = defaults.data(forKey: groupsKey),
            let decoded = try? JSONDecoder().decode([SpendingTransactionGroup].self, from: data) {
             loadedGroups = decoded
         } else {
@@ -455,7 +481,7 @@ class TransactionData {
         )
 
         // ✅ per screenshot: if nothing saved yet, start EMPTY (not sampleSubscriptions)
-        if let data = UserDefaults.standard.data(forKey: subscriptionsKey),
+        if let data = defaults.data(forKey: subscriptionsKey),
            let decoded = try? JSONDecoder().decode([RecurringSubscription].self, from: data) {
             self.subscriptions = decoded
         } else {
@@ -482,6 +508,12 @@ class TransactionData {
     private func saveSubscriptions() {
         if let encoded = try? JSONEncoder().encode(subscriptions) {
             UserDefaults.standard.set(encoded, forKey: subscriptionsKey)
+        }
+    }
+
+    private func saveAccounts() {
+        if let encoded = try? JSONEncoder().encode(accounts) {
+            UserDefaults.standard.set(encoded, forKey: accountsKey)
         }
     }
 
@@ -695,6 +727,50 @@ class TransactionData {
         return nil
     }
 
+    static func resolvedDateForUI(_ title: String, now: Date = Date()) -> Date? {
+        resolvedDate(forGroupTitle: title, now: now)
+    }
+
+    func isGroupInToday(_ group: SpendingTransactionGroup, now: Date = Date()) -> Bool {
+        let today = Calendar.current.startOfDay(for: now)
+        guard let groupDate = Self.resolvedDate(forGroupTitle: group.title, now: now) else {
+            return group.title == "Today"
+        }
+        return Calendar.current.isDate(Calendar.current.startOfDay(for: groupDate), inSameDayAs: today)
+    }
+
+    var todayGroups: [SpendingTransactionGroup] {
+        groups.filter { isGroupInToday($0) }
+    }
+
+    var todayTransactions: [SpendingTransaction] {
+        todayGroups.flatMap(\.transactions)
+    }
+
+    @discardableResult
+    func removeTransaction(id: UUID) -> Bool {
+        for groupIndex in groups.indices {
+            if let txIndex = groups[groupIndex].transactions.firstIndex(where: { $0.id == id }) {
+                var updatedTransactions = groups[groupIndex].transactions
+                updatedTransactions.remove(at: txIndex)
+
+                if updatedTransactions.isEmpty {
+                    groups.remove(at: groupIndex)
+                } else {
+                    groups[groupIndex] = SpendingTransactionGroup(
+                        id: groups[groupIndex].id,
+                        title: groups[groupIndex].title,
+                        transactions: updatedTransactions
+                    )
+                }
+
+                return true
+            }
+        }
+
+        return false
+    }
+
     // MARK: - Add Subscription + Auto-log Transaction
     func addSubscription(
         _ sub: RecurringSubscription,
@@ -853,7 +929,47 @@ class TransactionData {
 
     // MARK: - Computed Analytics
     var defaultSpendingAccount: Account? {
-        accounts.first(where: { $0.id == defaultAccountId }) ?? accounts.first
+        accounts.first(where: { $0.id == defaultAccountId })
+        ?? accounts.first(where: { $0.type == .checking || $0.type == .savings || $0.type == .cash })
+        ?? accounts.first
+    }
+
+    var visibleAccounts: [Account] {
+        accounts.filter { !$0.isHidden }
+    }
+
+    var liquidCashBalance: Double {
+        visibleAccounts
+            .filter { $0.type == .checking || $0.type == .savings || $0.type == .cash }
+            .reduce(0) { $0 + $1.balance }
+    }
+
+    var investedBalance: Double {
+        visibleAccounts
+            .filter { $0.type == .investment }
+            .reduce(0) { $0 + $1.balance }
+    }
+
+    var totalDebtBalance: Double {
+        visibleAccounts
+            .filter { $0.type == .creditCard || $0.type == .loan }
+            .reduce(0) { $0 + abs($1.balance) }
+    }
+
+    var totalAssetsBalance: Double {
+        visibleAccounts
+            .filter { $0.balance >= 0 }
+            .reduce(0) { $0 + $1.balance }
+    }
+
+    var totalLiabilitiesBalance: Double {
+        visibleAccounts
+            .filter { $0.balance < 0 }
+            .reduce(0) { $0 + abs($1.balance) }
+    }
+
+    var netWorthBalance: Double {
+        totalAssetsBalance - totalLiabilitiesBalance
     }
 
     var allTransactions: [SpendingTransaction] {
@@ -959,13 +1075,21 @@ class TransactionData {
     }
 
     var totalMonthlyBudget: Double {
-        budgetCategories
+        let categoryTotal = budgetCategories
             .filter { !$0.isExcluded }
             .reduce(0) { $0 + $1.monthlyBudget }
+        return manualMonthlyBudget > 0 ? manualMonthlyBudget : categoryTotal
     }
 
     var safeToSpendThisMonth: Double {
-        max(totalMonthlyBudget - monthlySpent - upcomingRecurringTotal, 0)
+        guard liquidCashBalance > 0 else { return 0 }
+
+        let remainingBudget = max(totalMonthlyBudget - monthlySpent, 0)
+        let cashConstrainedCapacity: Double
+
+        cashConstrainedCapacity = max(liquidCashBalance - upcomingRecurringTotal, 0)
+
+        return min(remainingBudget, cashConstrainedCapacity)
     }
 
     var totalGoalTarget: Double {
@@ -991,11 +1115,40 @@ class TransactionData {
     }
 
     var dailySpent: Double {
-        groups.first?.transactions.reduce(0) { $0 + $1.amountValue } ?? 0
+        todayTransactions.reduce(0) { $0 + $1.amountValue }
     }
 
     var dailyRemaining: Double {
-        max(dailyBudget - dailySpent, 0)
+        let remainingBudget = max(dailyBudget - dailySpent, 0)
+
+        if liquidCashBalance > 0 {
+            return min(remainingBudget, max(liquidCashBalance - dailySpent, 0))
+        }
+
+        return remainingBudget
+    }
+
+    func upsertAccount(_ account: Account) {
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index] = account
+        } else {
+            accounts.insert(account, at: 0)
+        }
+        saveAccounts()
+    }
+
+    func deleteAccount(id: UUID) {
+        accounts.removeAll { $0.id == id }
+        saveAccounts()
+    }
+
+    func normalizedBalance(for type: AccountType, enteredBalance: Double) -> Double {
+        switch type {
+        case .creditCard, .loan:
+            return -abs(enteredBalance)
+        case .checking, .savings, .investment, .cash:
+            return enteredBalance
+        }
     }
 
     // MARK: - Sample Data
@@ -1035,27 +1188,19 @@ class TransactionData {
         SeedTemplate(title: "ClassPass", subtitle: "Fitness", icon: "figure.run", category: .fitness, amountRange: 39...109, canBeImpulse: false, canAutoPay: true),
     ]
 
-    static var sampleAccounts: [Account] {
-        let primaryId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
-        return [
-            Account(id: primaryId, name: "Daily Checking", type: .checking, institution: "Chase", balance: 4821.17),
-            Account(name: "Rainy Day Savings", type: .savings, institution: "Ally", balance: 12340.42),
-            Account(name: "Freedom Card", type: .creditCard, institution: "Chase", balance: -742.88),
-            Account(name: "Brokerage", type: .investment, institution: "Fidelity", balance: 18550.00),
-        ]
-    }
+    static var sampleAccounts: [Account] { [] }
 
     static var sampleBudgetCategories: [BudgetCategory] = [
-        BudgetCategory(category: .dining, monthlyBudget: 450),
-        BudgetCategory(category: .transport, monthlyBudget: 220),
-        BudgetCategory(category: .shopping, monthlyBudget: 400),
-        BudgetCategory(category: .entertainment, monthlyBudget: 180),
-        BudgetCategory(category: .groceries, monthlyBudget: 520),
-        BudgetCategory(category: .utilities, monthlyBudget: 240),
-        BudgetCategory(category: .fitness, monthlyBudget: 180),
-        BudgetCategory(category: .subscriptions, monthlyBudget: 120),
-        BudgetCategory(category: .lifestyle, monthlyBudget: 240),
-        BudgetCategory(category: .other, monthlyBudget: 150),
+        BudgetCategory(category: .dining, monthlyBudget: 0),
+        BudgetCategory(category: .transport, monthlyBudget: 0),
+        BudgetCategory(category: .shopping, monthlyBudget: 0),
+        BudgetCategory(category: .entertainment, monthlyBudget: 0),
+        BudgetCategory(category: .groceries, monthlyBudget: 0),
+        BudgetCategory(category: .utilities, monthlyBudget: 0),
+        BudgetCategory(category: .fitness, monthlyBudget: 0),
+        BudgetCategory(category: .subscriptions, monthlyBudget: 0),
+        BudgetCategory(category: .lifestyle, monthlyBudget: 0),
+        BudgetCategory(category: .other, monthlyBudget: 0),
     ]
 
     static var sampleMerchantRules: [MerchantRule] = [
@@ -1067,15 +1212,11 @@ class TransactionData {
     ]
 
     static var sampleSavingsGoals: [SavingsGoal] {
-        let defaultAccountId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
-        return [
-            SavingsGoal(name: "Emergency Fund", targetAmount: 15000, currentAmount: 12340.42, linkedAccountId: defaultAccountId),
-            SavingsGoal(name: "Summer Trip", targetAmount: 2500, currentAmount: 940),
-        ]
+        []
     }
 
     static var sampleGroups: [SpendingTransactionGroup] {
-        generateInitialGroups()
+        []
     }
 
     private static func generateInitialGroups(days: Int = 21) -> [SpendingTransactionGroup] {

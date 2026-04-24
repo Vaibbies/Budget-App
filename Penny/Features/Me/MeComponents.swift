@@ -118,6 +118,9 @@ struct MeStatsGrid: View {
 
 // MARK: - Insight Card
 struct MeInsightCard: View {
+    let title: String
+    let message: String
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Circle()
@@ -137,18 +140,13 @@ struct MeInsightCard: View {
                 )
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("PENNY INSIGHT")
+                Text(title.uppercased())
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(MeTheme.accent)
                     .tracking(1.5)
 
-                (Text("You've curbed your coffee spending by ")
+                Text(message)
                     .foregroundColor(.white.opacity(0.8))
-                 + Text("18%")
-                    .foregroundColor(.white)
-                    .fontWeight(.bold)
-                 + Text(" this month. That's enough for a nice dinner! 🍝")
-                    .foregroundColor(.white.opacity(0.8)))
                     .font(.system(size: 12, weight: .medium))
                     .lineSpacing(3)
             }
@@ -341,6 +339,12 @@ struct MeAchievementsSection: View {
 
 // MARK: - Footer
 struct MeFooter: View {
+    private var versionString: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? version
+        return "VERSION \(version) (\(build))"
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             Button("Sign Out") {
@@ -355,7 +359,7 @@ struct MeFooter: View {
                     .stroke(Color.clear, lineWidth: 1)
             )
 
-            Text("VERSION 1.0.0")
+            Text(versionString)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundColor(.white.opacity(0.2))
                 .tracking(2)

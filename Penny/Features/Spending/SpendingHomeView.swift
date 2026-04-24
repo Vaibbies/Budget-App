@@ -9,9 +9,15 @@ struct SpendingHomeView: View {
         var id: String { rawValue }
     }
 
+    private enum TransactionsSheetScope: Equatable {
+        case all
+        case today
+    }
+
     @State private var showDrawer = false
     @State private var showAddTransaction = false
     @State private var showTransactions = false
+    @State private var transactionsSheetScope: TransactionsSheetScope = .all
     @State private var showRecurring = false
     @State private var selectedTrendPeriod: TrendPeriod = .weekly
     @AppStorage("penny.profile.name") private var storedProfileName: String = "Alex Rivers"
@@ -45,6 +51,10 @@ struct SpendingHomeView: View {
     }
 
     var spendingInsight: String {
+        guard !data.allTransactions.isEmpty || !data.accounts.isEmpty || data.dailyBudget > 0 else {
+            return "Add your accounts, set a daily budget, and log your first transactions to unlock spending insights."
+        }
+
         let comparison = data.monthToDateComparison()
         let direction = comparison.delta <= 0 ? "down" : "up"
         let percent = Int(abs(comparison.percentChange) * 100)
@@ -228,7 +238,10 @@ struct SpendingHomeView: View {
                         greetingHeader
                             .padding(.bottom, 4)
 
-                        BalanceView()
+                        BalanceView(onTap: {
+                            transactionsSheetScope = .today
+                            showTransactions = true
+                        })
                             .padding(.bottom, 8)
 
                         budgetRingCard
@@ -629,27 +642,40 @@ struct SpendingHomeView: View {
     private var categoryPills: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(data.categoryTotals) { category in
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(category.color)
-                            .frame(width: 6, height: 6)
+                if data.categoryTotals.isEmpty {
+                    Text("No category activity yet")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.55))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+                        )
+                } else {
+                    ForEach(data.categoryTotals) { category in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(category.color)
+                                .frame(width: 6, height: 6)
 
-                        Text(category.name)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.8))
+                            Text(category.name)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
 
-                        Text("$\(String(format: "%.0f", category.amount))")
-                            .font(.system(size: 12, weight: .regular, design: .serif))
-                            .foregroundColor(.white.opacity(0.4))
+                            Text("$\(String(format: "%.0f", category.amount))")
+                                .font(.system(size: 12, weight: .regular, design: .serif))
+                                .foregroundColor(.white.opacity(0.4))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+                        )
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.05))
-                            .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
-                    )
                 }
             }
             .padding(.horizontal, 20)
@@ -683,43 +709,47 @@ struct SpendingHomeView: View {
             }
 
             VStack(spacing: 8) {
-                ForEach(upcomingRecurring) { sub in
-                    HStack(spacing: 14) {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
-                            .frame(width: 36, height: 36)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06), lineWidth: 1))
-                            .overlay(
-                                BrandLogoView(
-                                    name: sub.name,
-                                    size: 36,
-                                    fallbackIcon: sub.iconName,
-                                    fallbackColor: sub.iconColor
+                if upcomingRecurring.isEmpty {
+                    emptySectionCard("No recurring bills yet", subtitle: "Add subscriptions later and they will show up here.")
+                } else {
+                    ForEach(upcomingRecurring) { sub in
+                        HStack(spacing: 14) {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
+                                .frame(width: 36, height: 36)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                                .overlay(
+                                    BrandLogoView(
+                                        name: sub.name,
+                                        size: 36,
+                                        fallbackIcon: sub.iconName,
+                                        fallbackColor: sub.iconColor
+                                    )
                                 )
-                            )
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(sub.name)
-                                .font(.system(size: 14, weight: .medium))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(sub.name)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.white)
+
+                                Text(sub.nextBilling)
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+
+                            Spacer()
+
+                            Text("$\(String(format: "%.2f", sub.price))")
+                                .font(.system(size: 15, weight: .regular, design: .serif))
                                 .foregroundColor(.white)
-
-                            Text(sub.nextBilling)
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(.white.opacity(0.4))
                         }
-
-                        Spacer()
-
-                        Text("$\(String(format: "%.2f", sub.price))")
-                            .font(.system(size: 15, weight: .regular, design: .serif))
-                            .foregroundColor(.white)
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.white.opacity(0.04))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        )
                     }
-                    .padding(14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
-                    )
                 }
             }
         }
@@ -741,6 +771,7 @@ struct SpendingHomeView: View {
                 Spacer()
 
                 Button {
+                    transactionsSheetScope = .all
                     showTransactions = true
                     Haptics.light()
                 } label: {
@@ -757,65 +788,89 @@ struct SpendingHomeView: View {
             }
 
             VStack(spacing: 8) {
-                ForEach(data.recentTransactions) { tx in
-                    HStack(spacing: 14) {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(tx.borderColor, lineWidth: 1))
-                            .frame(width: 40, height: 40)
-                            .overlay(
-                                BrandLogoView(
-                                    name: tx.title,
-                                    size: 40,
-                                    fallbackIcon: tx.icon,
-                                    fallbackColor: tx.iconColor
-                                )
-                            )
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(tx.title)
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white)
-
-                            Text(tx.subtitle)
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(.white.opacity(0.4))
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(tx.amount)
-                                .font(.system(size: 14, weight: .regular, design: .serif))
-                                .foregroundColor(.white)
-
-                            if tx.isImpulse {
-                                Text("impulse")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.12))
+                if data.recentTransactions.isEmpty {
+                    emptySectionCard("No transactions yet", subtitle: "Add a transaction and your recent activity will appear here.")
+                } else {
+                    ForEach(data.recentTransactions) { tx in
+                        HStack(spacing: 14) {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(red: 0.1, green: 0.1, blue: 0.12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(tx.borderColor, lineWidth: 1))
+                                .frame(width: 40, height: 40)
+                                .overlay(
+                                    BrandLogoView(
+                                        name: tx.title,
+                                        size: 40,
+                                        fallbackIcon: tx.icon,
+                                        fallbackColor: tx.iconColor
                                     )
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(tx.title)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.white)
+
+                                Text(tx.subtitle)
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(tx.amount)
+                                    .font(.system(size: 14, weight: .regular, design: .serif))
+                                    .foregroundColor(.white)
+
+                                if tx.isImpulse {
+                                    Text("impulse")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(
+                                            Capsule()
+                                                .fill(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.12))
+                                        )
+                                }
                             }
                         }
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.white.opacity(0.04))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        )
                     }
-                    .padding(14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.white.opacity(0.04))
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
-                    )
                 }
             }
         }
         .sheet(isPresented: $showTransactions) {
-            TransactionsView()
+            TransactionsView(scope: transactionsSheetScope == .today ? .today : .all)
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private func emptySectionCard(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white)
+
+            Text(subtitle)
+                .font(.system(size: 11, weight: .regular))
+                .foregroundColor(.white.opacity(0.45))
+                .lineSpacing(3)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.04))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
+        )
     }
 }
 

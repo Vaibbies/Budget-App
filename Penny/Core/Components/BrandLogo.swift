@@ -518,26 +518,89 @@ let categoryFallbackIcons: [String: String] = [
 ]
 
 func brandLogoURL(for name: String) -> URL? {
-    let key = name.lowercased().trimmingCharacters(in: .whitespaces)
+    let key = normalizedBrandLookupKey(name)
+    guard !key.isEmpty else { return nil }
 
-    // PRO matcher first (JSON bundle with expanded descriptors)
+    guard let logoDevToken = UserDefaults.standard.string(forKey: "penny.logoDev.publishableKey")?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+        !logoDevToken.isEmpty else {
+        return nil
+    }
+
     if let domain = MerchantMatcher.shared.domain(for: key) {
-        return URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=128")
+        return logoDevDomainURL(domain: domain, token: logoDevToken)
     }
 
-    // Only look up known brands — no guessing
     if let domain = brandDomains[key] {
-        return URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=128")
+        return logoDevDomainURL(domain: domain, token: logoDevToken)
     }
 
-    // Try first word match — "Spotify Premium" → "spotify"
-    let firstWord = key.components(separatedBy: " ").first ?? key
-    if let domain = brandDomains[firstWord] {
-        return URL(string: "https://www.google.com/s2/favicons?domain=\(domain)&sz=128")
+    return logoDevNameURL(name: key, token: logoDevToken)
+}
+
+private func normalizedBrandLookupKey(_ input: String) -> String {
+    var normalized = input
+        .lowercased()
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    let noisePatterns = [
+        "pending ",
+        "debit card purchase ",
+        "card purchase ",
+        "purchase authorized on ",
+        "recurring purchase ",
+        "pos withdrawal ",
+        "pos purchase ",
+        "checkcard ",
+        "withdrawal ",
+        "payment to ",
+        "payment ",
+        "visa "
+    ]
+
+    for pattern in noisePatterns where normalized.hasPrefix(pattern) {
+        normalized.removeFirst(pattern.count)
+        break
     }
 
-    // Unknown — return nil, show nothing
-    return nil
+    let charsToSpace = CharacterSet(charactersIn: "'’`.,:;|/\\-_()[]{}*&^%$#@!~+=\"")
+    let transformed = normalized.unicodeScalars.map { scalar in
+        charsToSpace.contains(scalar) ? " " : String(Character(scalar))
+    }
+    normalized = transformed.joined()
+
+    while normalized.contains("  ") {
+        normalized = normalized.replacingOccurrences(of: "  ", with: " ")
+    }
+
+    return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+private func logoDevDomainURL(domain: String, token: String) -> URL? {
+    var components = URLComponents(string: "https://img.logo.dev/\(domain)")
+    components?.queryItems = [
+        URLQueryItem(name: "token", value: token),
+        URLQueryItem(name: "size", value: "96"),
+        URLQueryItem(name: "format", value: "png"),
+        URLQueryItem(name: "retina", value: "true"),
+        URLQueryItem(name: "theme", value: "dark"),
+        URLQueryItem(name: "fallback", value: "404")
+    ]
+    return components?.url
+}
+
+private func logoDevNameURL(name: String, token: String) -> URL? {
+    let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+    var components = URLComponents(string: "https://img.logo.dev/name/\(encodedName)")
+    components?.queryItems = [
+        URLQueryItem(name: "token", value: token),
+        URLQueryItem(name: "size", value: "96"),
+        URLQueryItem(name: "format", value: "png"),
+        URLQueryItem(name: "retina", value: "true"),
+        URLQueryItem(name: "theme", value: "dark"),
+        URLQueryItem(name: "fallback", value: "404")
+    ]
+    return components?.url
 }
 
 struct BrandLogoView: View {
@@ -545,7 +608,7 @@ struct BrandLogoView: View {
     let size: CGFloat
     let fallbackIcon: String
     let fallbackColor: Color
-    var showFallback: Bool = false
+    var showFallback: Bool = true
 
     @State private var debouncedName = ""
     @State private var debounceTask: Task<Void, Never>? = nil
@@ -560,8 +623,10 @@ struct BrandLogoView: View {
                     case .success(let image):
                         image
                             .resizable()
+                            .interpolation(.high)
+                            .antialiased(true)
                             .scaledToFit()
-                            .frame(width: size * 0.62, height: size * 0.62)
+                            .frame(width: size * 0.66, height: size * 0.66)
                             .clipShape(RoundedRectangle(cornerRadius: size * 0.12))
                     default:
                         if showFallback {

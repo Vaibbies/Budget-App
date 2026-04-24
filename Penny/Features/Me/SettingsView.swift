@@ -7,6 +7,7 @@ struct SettingsView: View {
     // Persisted values (used by Me page too)
     @AppStorage("penny.profile.name") private var storedName: String = "Alex Rivers"
     @AppStorage("penny.profile.email") private var storedEmail: String = "alex.r@protonmail.com"
+    @AppStorage("penny.logoDev.publishableKey") private var storedLogoDevKey: String = ""
 
     @State private var profile = SettingsProfile(
         name: "Alex Rivers",
@@ -30,8 +31,10 @@ struct SettingsView: View {
 
     // Editing
     @State private var showProfileEditor = false
+    @State private var showLogoProviderEditor = false
     @State private var draftName = ""
     @State private var draftEmail = ""
+    @State private var draftLogoDevKey = ""
 
     @FocusState private var focusedField: Field?
 
@@ -82,6 +85,16 @@ struct SettingsView: View {
                     gridCell(label: "Timezone",  value: preferences.timezone)
                 }
 
+                tappableGridCell(
+                    label: "Merchant Logos",
+                    value: storedLogoDevKey.isEmpty ? "Not Configured" : "Logo.dev Connected",
+                    valueColor: storedLogoDevKey.isEmpty ? .white.opacity(0.6) : MeTheme.success,
+                    hasAccent: !storedLogoDevKey.isEmpty
+                ) {
+                    openLogoProviderEditor()
+                }
+                .padding(.top, 12)
+
                 divider
 
                 // ── Notification Grid ────────────────────────────────────
@@ -110,6 +123,11 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showProfileEditor) {
             profileEditorSheet
+                .presentationCornerRadius(26)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showLogoProviderEditor) {
+            logoProviderSheet
                 .presentationCornerRadius(26)
                 .presentationDragIndicator(.visible)
         }
@@ -265,6 +283,106 @@ struct SettingsView: View {
         }
     }
 
+    private var logoProviderSheet: some View {
+        ZStack {
+            MeTheme.canvas.ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                HStack {
+                    Text("Merchant Logos")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button("Done") { saveLogoProvider() }
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(MeTheme.accent)
+                }
+                .padding(.top, 8)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("LOGO.DEV PUBLISHABLE KEY")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white.opacity(0.4))
+                        .tracking(2)
+
+                    TextField("pk_...", text: $draftLogoDevKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .frame(height: 48)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                )
+                        )
+
+                    Text("Used for high-quality merchant logos in transactions. Leave blank to fall back to category icons.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.5))
+                        .lineSpacing(3)
+                }
+                .padding(16)
+                .background(MeTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(MeTheme.glassBorder, lineWidth: 1)
+                )
+
+                Button {
+                    draftLogoDevKey = ""
+                } label: {
+                    Text("Clear Key")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.65))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.white.opacity(0.04))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+
+                Button { saveLogoProvider() } label: {
+                    Text("Save")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 1.0, green: 0.55, blue: 0.36),
+                                            Color(red: 1.0, green: 0.42, blue: 0.16)
+                                        ],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                        )
+                }
+                .padding(.bottom, 12)
+            }
+            .padding(20)
+        }
+        .onAppear {
+            draftLogoDevKey = storedLogoDevKey
+        }
+    }
+
     private func fieldCard(title: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
@@ -307,6 +425,11 @@ struct SettingsView: View {
         }
     }
 
+    private func openLogoProviderEditor() {
+        draftLogoDevKey = storedLogoDevKey
+        showLogoProviderEditor = true
+    }
+
     private func saveFromSheet() {
         profile.name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.email = draftEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -321,6 +444,13 @@ struct SettingsView: View {
         Haptics.medium()
         focusedField = nil
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    private func saveLogoProvider() {
+        storedLogoDevKey = draftLogoDevKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        Haptics.medium()
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        showLogoProviderEditor = false
     }
 
     private func sectionLabel(_ text: String) -> some View {

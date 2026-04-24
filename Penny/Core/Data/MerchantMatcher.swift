@@ -20,7 +20,8 @@ final class MerchantMatcher {
         }
 
         for key in keysByLengthDesc {
-            if s.contains(key) {
+            guard key.count >= 4 else { continue }
+            if containsWholePhrase(key, in: s) {
                 return map[key]
             }
         }
@@ -50,6 +51,26 @@ final class MerchantMatcher {
     private func normalize(_ input: String) -> String {
         var normalized = input.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
 
+        let noisePatterns = [
+            "pending ",
+            "debit card purchase ",
+            "card purchase ",
+            "purchase authorized on ",
+            "recurring purchase ",
+            "pos withdrawal ",
+            "pos purchase ",
+            "checkcard ",
+            "withdrawal ",
+            "payment to ",
+            "payment ",
+            "visa "
+        ]
+
+        for pattern in noisePatterns where normalized.hasPrefix(pattern) {
+            normalized.removeFirst(pattern.count)
+            break
+        }
+
         let charsToSpace = CharacterSet(charactersIn: "'’`.,:;|/\\-_()[]{}*&^%$#@!~+=\"")
         let transformed = normalized.unicodeScalars.map { scalar in
             charsToSpace.contains(scalar) ? " " : String(Character(scalar))
@@ -61,5 +82,15 @@ final class MerchantMatcher {
         }
 
         return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func containsWholePhrase(_ phrase: String, in text: String) -> Bool {
+        if text == phrase {
+            return true
+        }
+
+        return text.contains(" \(phrase) ")
+            || text.hasPrefix("\(phrase) ")
+            || text.hasSuffix(" \(phrase)")
     }
 }
