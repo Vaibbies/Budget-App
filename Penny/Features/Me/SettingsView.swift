@@ -5,13 +5,13 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     // Persisted values (used by Me page too)
-    @AppStorage("penny.profile.name") private var storedName: String = "Alex Rivers"
-    @AppStorage("penny.profile.email") private var storedEmail: String = "alex.r@protonmail.com"
+    @AppStorage("penny.profile.name") private var storedName: String = ""
+    @AppStorage("penny.profile.email") private var storedEmail: String = ""
     @AppStorage("penny.logoDev.publishableKey") private var storedLogoDevKey: String = ""
 
     @State private var profile = SettingsProfile(
-        name: "Alex Rivers",
-        email: "alex.r@protonmail.com",
+        name: "",
+        email: "",
         twoFactorEnabled: true
     )
 
@@ -30,16 +30,19 @@ struct SettingsView: View {
     )
 
     // Editing
-    @State private var showProfileEditor = false
+    @State private var activeProfileEditor: Field?
     @State private var showLogoProviderEditor = false
-    @State private var draftName = ""
+    @State private var draftFirstName = ""
+    @State private var draftLastName = ""
     @State private var draftEmail = ""
     @State private var draftLogoDevKey = ""
 
     @FocusState private var focusedField: Field?
 
-    private enum Field {
+    private enum Field: Identifiable {
         case name, email
+
+        var id: Self { self }
     }
 
     var body: some View {
@@ -52,10 +55,10 @@ struct SettingsView: View {
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     tappableGridCell(
-                        label: "Profile",
+                        label: "Name",
                         value: profile.name
                     ) {
-                        openEditor(focus: .name)
+                        openEditor(.name)
                     }
 
                     gridCell(
@@ -66,10 +69,10 @@ struct SettingsView: View {
                 }
 
                 tappableGridCell(
-                    label: "Linked Email",
+                    label: "Email",
                     value: profile.email
                 ) {
-                    openEditor(focus: .email)
+                    openEditor(.email)
                 }
                 .padding(.top, 12)
 
@@ -121,8 +124,14 @@ struct SettingsView: View {
             profile.name = storedName
             profile.email = storedEmail
         }
-        .sheet(isPresented: $showProfileEditor) {
-            profileEditorSheet
+        .onChange(of: profile.name) { _, _ in
+            autoPersistProfile()
+        }
+        .onChange(of: profile.email) { _, _ in
+            autoPersistProfile()
+        }
+        .sheet(item: $activeProfileEditor) { field in
+            profileEditorSheet(for: field)
                 .presentationCornerRadius(26)
                 .presentationDragIndicator(.visible)
         }
@@ -154,10 +163,7 @@ struct SettingsView: View {
                 .foregroundColor(.white.opacity(0.4))
 
             Spacer()
-
-            Button("Save") { saveProfile() }
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(MeTheme.accent)
+                .frame(width: 36)
         }
         .padding(.top, 8)
         .padding(.bottom, 24)
@@ -226,61 +232,172 @@ struct SettingsView: View {
     }
 
     // MARK: - Editor Sheet
-    private var profileEditorSheet: some View {
+    private func profileEditorSheet(for field: Field) -> some View {
         ZStack {
             MeTheme.canvas.ignoresSafeArea()
 
-            VStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.0, green: 0.55, blue: 0.36),
+                                        Color(red: 1.0, green: 0.42, blue: 0.16)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 42, height: 42)
 
-                HStack {
-                    Text("Edit Profile")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                    Spacer()
-                    Button("Done") { saveFromSheet() }
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(MeTheme.accent)
+                        Image(systemName: field == .name ? "person.text.rectangle.fill" : "envelope.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(field == .name ? "Edit Name" : "Edit Email")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(.white)
+
+                        if field == .email {
+                            Text("Update the email address tied to your profile.")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white.opacity(0.55))
+                                .lineSpacing(3)
+                        }
+                    }
                 }
-                .padding(.top, 8)
+                .padding(.top, 6)
 
-                VStack(spacing: 12) {
-                    fieldCard(title: "Name", text: $draftName, keyboard: .default)
-                        .focused($focusedField, equals: .name)
+                VStack(spacing: 0) {
+                    if field == .name {
+                        compactField(title: "First Name", text: $draftFirstName, keyboard: .default)
+                            .focused($focusedField, equals: .name)
 
-                    fieldCard(title: "Email", text: $draftEmail, keyboard: .emailAddress)
-                        .focused($focusedField, equals: .email)
+                        Divider()
+                            .background(Color.white.opacity(0.06))
+                            .padding(.leading, 16)
+
+                        compactField(title: "Last Name", text: $draftLastName, keyboard: .default)
+                    } else {
+                        compactField(title: "Email", text: $draftEmail, keyboard: .emailAddress)
+                            .focused($focusedField, equals: .email)
+                    }
+                }
+                .background(MeTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.white.opacity(0.04), lineWidth: 1)
+                )
+
+                if field == .email {
+                    Text("Use the email you want associated with reminders and support requests.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+                        .lineSpacing(3)
+                        .padding(.horizontal, 4)
+                } else {
+                    Text("This name is also used on the Spending home greeting.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+                        .lineSpacing(3)
+                        .padding(.horizontal, 4)
                 }
 
                 Spacer(minLength: 0)
 
-                Button { saveFromSheet() } label: {
-                    Text("Save")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(
-                            RoundedRectangle(cornerRadius: 18)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 1.0, green: 0.55, blue: 0.36),
-                                            Color(red: 1.0, green: 0.42, blue: 0.16)
-                                        ],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
+                HStack(spacing: 12) {
+                    Button {
+                        dismissProfileEditor()
+                    } label: {
+                        Text("Cancel")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.72))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .fill(Color.white.opacity(0.04))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18)
+                                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
                                     )
-                                )
-                        )
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { saveFromSheet(field) } label: {
+                        Text("Save")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                Color(red: 1.0, green: 0.55, blue: 0.36),
+                                                Color(red: 1.0, green: 0.42, blue: 0.16)
+                                            ],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.bottom, 12)
             }
             .padding(20)
         }
         .onAppear {
-            draftName = profile.name
-            draftEmail = profile.email
+            if field == .name {
+                let parts = profile.name
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+                draftFirstName = parts.first.map(String.init) ?? ""
+                draftLastName = parts.dropFirst().first.map(String.init) ?? ""
+            } else {
+                draftEmail = profile.email
+            }
         }
+    }
+
+    private func compactField(title: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white.opacity(0.4))
+                .tracking(2)
+
+            TextField(title, text: text)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(title == "Email" ? .never : .words)
+                .autocorrectionDisabled(title == "Email")
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.14, green: 0.09, blue: 0.07),
+                                    Color(red: 0.10, green: 0.06, blue: 0.05)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+        }
+        .padding(16)
     }
 
     private var logoProviderSheet: some View {
@@ -415,13 +532,11 @@ struct SettingsView: View {
         )
     }
 
-    private func openEditor(focus: Field) {
-        draftName = profile.name
-        draftEmail = profile.email
-        showProfileEditor = true
+    private func openEditor(_ field: Field) {
+        activeProfileEditor = field
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            focusedField = focus
+            focusedField = field
         }
     }
 
@@ -430,20 +545,47 @@ struct SettingsView: View {
         showLogoProviderEditor = true
     }
 
-    private func saveFromSheet() {
-        profile.name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.email = draftEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func saveFromSheet(_ field: Field) {
+        switch field {
+        case .name:
+            let first = draftFirstName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let last = draftLastName.trimmingCharacters(in: .whitespacesAndNewlines)
+            profile.name = [first, last].filter { !$0.isEmpty }.joined(separator: " ")
+        case .email:
+            profile.email = draftEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         saveProfile()
-        showProfileEditor = false
+        activeProfileEditor = nil
     }
 
     private func saveProfile() {
-        storedName = profile.name.isEmpty ? "Alex Rivers" : profile.name
-        storedEmail = profile.email.isEmpty ? "alex.r@protonmail.com" : profile.email
+        profile.name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.email = profile.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        storedName = profile.name
+        storedEmail = profile.email
 
         Haptics.medium()
         focusedField = nil
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    private func autoPersistProfile() {
+        let trimmedName = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = profile.email.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if storedName != trimmedName {
+            storedName = trimmedName
+        }
+
+        if storedEmail != trimmedEmail {
+            storedEmail = trimmedEmail
+        }
+    }
+
+    private func dismissProfileEditor() {
+        focusedField = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        activeProfileEditor = nil
     }
 
     private func saveLogoProvider() {
@@ -504,19 +646,7 @@ struct SettingsView: View {
     }
 
     private var backgroundGradient: some View {
-        ZStack {
-            MeTheme.canvas.ignoresSafeArea()
-            RadialGradient(
-                colors: [
-                    Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.12),
-                    Color.clear
-                ],
-                center: .init(x: 0.5, y: 0.0),
-                startRadius: 0,
-                endRadius: 500
-            )
-            .ignoresSafeArea()
-        }
+        PennyWarmBackground()
     }
 }
 

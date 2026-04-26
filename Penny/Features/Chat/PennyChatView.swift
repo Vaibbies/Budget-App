@@ -26,31 +26,7 @@ struct PennyChatView: View {
 
     var body: some View {
         ZStack {
-            // Background
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.04, green: 0.04, blue: 0.05),
-                        Color(red: 0.04, green: 0.04, blue: 0.04),
-                        Color.black
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                RadialGradient(
-                    colors: [
-                        Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.45),
-                        Color(red: 1.0, green: 0.38, blue: 0.13).opacity(0.25),
-                        Color(red: 1.0, green: 0.38, blue: 0.13).opacity(0.05),
-                        Color.clear
-                    ],
-                    center: UnitPoint(x: 0.5, y: -0.3),
-                    startRadius: 50,
-                    endRadius: 400
-                )
-            }
-            .ignoresSafeArea()
+            PennyWarmBackground()
 
             VStack(spacing: 0) {
                 ChatHeader(onBack: {

@@ -13,6 +13,38 @@ enum MeTheme {
     static let success = Color(red: 0.063, green: 0.725, blue: 0.506)
 }
 
+struct PennyWarmBackground: View {
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            LinearGradient(
+                colors: [
+                    Color(red: 0.20, green: 0.12, blue: 0.08),
+                    Color(red: 0.08, green: 0.05, blue: 0.04),
+                    Color.black
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            RadialGradient(
+                colors: [
+                    Color(red: 0.85, green: 0.45, blue: 0.20).opacity(0.9),
+                    Color(red: 0.75, green: 0.35, blue: 0.15).opacity(0.6),
+                    Color(red: 0.50, green: 0.25, blue: 0.12).opacity(0.3),
+                    Color.clear
+                ],
+                center: UnitPoint(x: 0.5, y: -0.1),
+                startRadius: 20,
+                endRadius: 380
+            )
+            .ignoresSafeArea()
+        }
+    }
+}
+
 // MARK: - Data Models
 struct MeStatItem: Identifiable {
     let id = UUID()

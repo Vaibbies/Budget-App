@@ -136,20 +136,7 @@ private struct MeDetailScaffold: View {
     }
 
     private var backgroundGradient: some View {
-        ZStack {
-            MeTheme.canvas.ignoresSafeArea()
-            RadialGradient(
-                colors: [
-                    Color(red: 1.0, green: 0.53, blue: 0.25).opacity(0.20),
-                    Color(red: 1.0, green: 0.376, blue: 0.125).opacity(0.05),
-                    Color.clear
-                ],
-                center: .init(x: 0.5, y: 0.0),
-                startRadius: 0,
-                endRadius: 500
-            )
-            .ignoresSafeArea()
-        }
+        PennyWarmBackground()
     }
 }
 

@@ -2,11 +2,16 @@ import SwiftUI
 
 // MARK: - Profile Header
 struct MeProfileHeader: View {
-    @AppStorage("penny.profile.name") private var storedName: String = "Alex Rivers"
-    @AppStorage("penny.profile.email") private var storedEmail: String = "alex.r@protonmail.com"
+    @AppStorage("penny.profile.name") private var storedName: String = ""
+    @AppStorage("penny.profile.email") private var storedEmail: String = ""
+
+    private var displayName: String {
+        let trimmed = storedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Your Name" : trimmed
+    }
 
     private var handle: String {
-        let base = storedName
+        let base = displayName
             .lowercased()
             .replacingOccurrences(of: " ", with: "_")
             .filter { $0.isLetter || $0 == "_" }
@@ -65,7 +70,7 @@ struct MeProfileHeader: View {
                 .offset(x: 40, y: 40)
             }
 
-            Text(storedName)
+            Text(displayName)
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundColor(.white.opacity(0.9))
                 .padding(.top, 16)
@@ -339,12 +344,6 @@ struct MeAchievementsSection: View {
 
 // MARK: - Footer
 struct MeFooter: View {
-    private var versionString: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? version
-        return "VERSION \(version) (\(build))"
-    }
-
     var body: some View {
         VStack(spacing: 16) {
             Button("Sign Out") {
@@ -358,11 +357,6 @@ struct MeFooter: View {
                 Capsule()
                     .stroke(Color.clear, lineWidth: 1)
             )
-
-            Text(versionString)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.white.opacity(0.2))
-                .tracking(2)
         }
         .padding(.bottom, 8)
     }

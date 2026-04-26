@@ -116,19 +116,7 @@ struct FriendsView: View {
     }
 
     private var background: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            RadialGradient(
-                colors: [
-                    Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.22),
-                    Color.clear
-                ],
-                center: .init(x: 0.5, y: 0.0),
-                startRadius: 0,
-                endRadius: 500
-            )
-            .ignoresSafeArea()
-        }
+        PennyWarmBackground()
     }
 
     private var filterBar: some View {

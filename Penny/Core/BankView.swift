@@ -2,6 +2,12 @@ import SwiftUI
 
 struct BankView: View {
     private let data = TransactionData.shared
+    private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
+    private let warmAccentSoft = Color(red: 1.0, green: 0.55, blue: 0.36)
+    private let warmGold = Color(red: 0.98, green: 0.74, blue: 0.34)
+    private let warmCream = Color(red: 0.95, green: 0.86, blue: 0.72)
+    private let warmRose = Color(red: 0.86, green: 0.53, blue: 0.42)
+    private let warmOlive = Color(red: 0.67, green: 0.73, blue: 0.42)
 
     @State private var showAddAccount = false
     @State private var editingAccount: Account?
@@ -79,13 +85,13 @@ struct BankView: View {
                     Text("Add Account")
                 }
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Color(red: 0.38, green: 0.65, blue: 0.98))
+                .foregroundColor(warmAccentSoft)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .background(
                     Capsule()
-                        .fill(Color.white.opacity(0.05))
-                        .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+                        .fill(warmAccent.opacity(0.08))
+                        .overlay(Capsule().stroke(warmAccent.opacity(0.20), lineWidth: 1))
                 )
             }
             .buttonStyle(.plain)
@@ -112,8 +118,8 @@ struct BankView: View {
             }
 
             HStack(spacing: 12) {
-                balancePill(label: "Assets", value: currencyString(data.totalAssetsBalance), color: Color(red: 0.29, green: 0.87, blue: 0.50))
-                balancePill(label: "Liabilities", value: currencyString(data.totalLiabilitiesBalance), color: Color(red: 1.0, green: 0.42, blue: 0.16))
+                balancePill(label: "Assets", value: currencyString(data.totalAssetsBalance), color: warmGold)
+                balancePill(label: "Liabilities", value: currencyString(data.totalLiabilitiesBalance), color: warmAccent)
             }
         }
         .padding(22)
@@ -122,8 +128,8 @@ struct BankView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.13, green: 0.14, blue: 0.18),
-                            Color(red: 0.07, green: 0.07, blue: 0.09)
+                            Color(red: 0.16, green: 0.09, blue: 0.07),
+                            Color(red: 0.07, green: 0.04, blue: 0.03)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -152,9 +158,13 @@ struct BankView: View {
                         .tracking(2)
                         .foregroundColor(.white.opacity(0.45))
 
-                    Text(currencyString(data.manualMonthlyBudget > 0 ? data.manualMonthlyBudget : data.dailyBudget))
+                    Text(currencyString(data.configuredBudgetValue > 0 ? data.configuredBudgetValue : data.totalMonthlyBudget))
                         .font(.system(size: 30, weight: .light, design: .serif))
                         .foregroundColor(.white)
+
+                    Text(data.budgetMode == .daily ? "Configured as a daily budget" : "Configured as a monthly budget")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.42))
                 }
 
                 Spacer()
@@ -164,13 +174,13 @@ struct BankView: View {
                 } label: {
                     Text("Edit")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(MeTheme.accent)
+                        .foregroundColor(warmAccentSoft)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(
                             Capsule()
-                                .fill(MeTheme.accent.opacity(0.10))
-                                .overlay(Capsule().stroke(MeTheme.accent.opacity(0.20), lineWidth: 1))
+                                .fill(warmAccent.opacity(0.10))
+                                .overlay(Capsule().stroke(warmAccent.opacity(0.22), lineWidth: 1))
                         )
                 }
                 .buttonStyle(.plain)
@@ -180,13 +190,13 @@ struct BankView: View {
                 metricChip(
                     title: "Spent Today",
                     value: currencyString(data.dailySpent),
-                    accent: Color(red: 1.0, green: 0.42, blue: 0.16)
+                    accent: warmAccent
                 )
 
                 metricChip(
                     title: "Remaining",
                     value: currencyString(data.dailyRemaining),
-                    accent: Color(red: 0.29, green: 0.87, blue: 0.50)
+                    accent: warmGold
                 )
             }
 
@@ -194,13 +204,13 @@ struct BankView: View {
                 metricChip(
                     title: "Daily Budget",
                     value: currencyString(data.dailyBudget),
-                    accent: Color(red: 0.38, green: 0.65, blue: 0.98)
+                    accent: warmCream
                 )
 
                 metricChip(
                     title: "Monthly Budget",
                     value: currencyString(data.totalMonthlyBudget),
-                    accent: Color(red: 0.35, green: 0.98, blue: 0.85)
+                    accent: warmRose
                 )
             }
         }
@@ -219,14 +229,14 @@ struct BankView: View {
                     title: "LIQUID CASH",
                     value: currencyString(data.liquidCashBalance),
                     subtitle: "checking + savings + cash",
-                    accent: Color(red: 0.38, green: 0.65, blue: 0.98)
+                    accent: warmGold
                 )
 
                 metricCard(
                     title: "INVESTMENTS",
                     value: currencyString(data.investedBalance),
                     subtitle: "investment accounts",
-                    accent: Color(red: 0.35, green: 0.98, blue: 0.85)
+                    accent: warmCream
                 )
             }
 
@@ -235,14 +245,14 @@ struct BankView: View {
                     title: "TOTAL DEBT",
                     value: currencyString(data.totalDebtBalance),
                     subtitle: "cards + loans",
-                    accent: Color(red: 1.0, green: 0.42, blue: 0.16)
+                    accent: warmAccent
                 )
 
                 metricCard(
                     title: "SAFE TO SPEND",
                     value: currencyString(data.safeToSpendThisMonth),
                     subtitle: "budget and cash constrained",
-                    accent: Color(red: 0.29, green: 0.87, blue: 0.50)
+                    accent: warmOlive
                 )
             }
         }
@@ -408,7 +418,7 @@ struct BankView: View {
 
                         Text("\(Int(progress * 100))%")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(MeTheme.accent)
+                            .foregroundColor(warmAccentSoft)
                     }
 
                     GeometryReader { geo in
@@ -420,7 +430,7 @@ struct BankView: View {
                             RoundedRectangle(cornerRadius: 5)
                                 .fill(
                                     LinearGradient(
-                                        colors: [MeTheme.accentLight, MeTheme.accent],
+                                        colors: [warmAccentSoft, warmAccent],
                                         startPoint: .leading,
                                         endPoint: .trailing
                                     )
@@ -443,15 +453,15 @@ struct BankView: View {
 
     private var healthSection: some View {
         VStack(spacing: 0) {
-            snapshotRow(title: "Daily Budget", subtitle: "your manual budget cap for each day", value: currencyString(data.dailyBudget), valueColor: .white.opacity(0.8))
+            snapshotRow(title: "Daily Budget", subtitle: "current daily budget for this month", value: currencyString(data.dailyBudget), valueColor: .white.opacity(0.8))
             divider
-            snapshotRow(title: "Monthly Budget", subtitle: "your manual budget cap for the month", value: currencyString(data.totalMonthlyBudget), valueColor: .white.opacity(0.8))
+            snapshotRow(title: "Monthly Budget", subtitle: "current monthly budget for this month", value: currencyString(data.totalMonthlyBudget), valueColor: .white.opacity(0.8))
             divider
-            snapshotRow(title: "Monthly Net", subtitle: "income minus budgetable spend", value: currencyString(data.monthlyNet), valueColor: data.monthlyNet >= 0 ? MeTheme.success : MeTheme.accent)
+            snapshotRow(title: "Monthly Net", subtitle: "income minus budgetable spend", value: currencyString(data.monthlyNet), valueColor: data.monthlyNet >= 0 ? warmGold : warmAccent)
             divider
             snapshotRow(title: "Upcoming Bills", subtitle: "next recurring charges in this cycle", value: currencyString(data.upcomingRecurringTotal), valueColor: .white.opacity(0.75))
             divider
-            snapshotRow(title: "Goal Progress", subtitle: "saved across all active goals", value: currencyString(data.totalGoalProgress), valueColor: MeTheme.success)
+            snapshotRow(title: "Goal Progress", subtitle: "saved across all active goals", value: currencyString(data.totalGoalProgress), valueColor: warmGold)
         }
         .background(Color.white.opacity(0.03))
         .clipShape(RoundedRectangle(cornerRadius: 24))
@@ -500,7 +510,7 @@ struct BankView: View {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color(red: 0.38, green: 0.65, blue: 0.98))
+                    .foregroundColor(warmAccentSoft)
             }
         }
         .padding(.horizontal, 4)
@@ -607,12 +617,12 @@ struct BankView: View {
 
     private func accountAccent(for type: AccountType) -> Color {
         switch type {
-        case .checking: return Color(red: 0.38, green: 0.65, blue: 0.98)
-        case .savings: return Color(red: 0.29, green: 0.87, blue: 0.50)
-        case .creditCard: return Color(red: 1.0, green: 0.42, blue: 0.16)
-        case .investment: return Color(red: 0.35, green: 0.98, blue: 0.85)
-        case .loan: return Color(red: 0.96, green: 0.45, blue: 0.71)
-        case .cash: return Color(red: 0.98, green: 0.85, blue: 0.35)
+        case .checking: return warmAccentSoft
+        case .savings: return warmGold
+        case .creditCard: return warmAccent
+        case .investment: return warmCream
+        case .loan: return warmRose
+        case .cash: return warmOlive
         }
     }
 
@@ -626,32 +636,7 @@ struct BankView: View {
     }
 
     private var backgroundGradient: some View {
-        ZStack {
-            Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
-
-            LinearGradient(
-                colors: [
-                    Color(red: 0.09, green: 0.10, blue: 0.14),
-                    Color(red: 0.05, green: 0.05, blue: 0.07),
-                    Color.black
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-
-            RadialGradient(
-                colors: [
-                    Color(red: 0.36, green: 0.72, blue: 1.0).opacity(0.25),
-                    Color(red: 0.20, green: 0.45, blue: 0.92).opacity(0.08),
-                    Color.clear
-                ],
-                center: .init(x: 0.5, y: 0.0),
-                startRadius: 0,
-                endRadius: 420
-            )
-            .ignoresSafeArea()
-        }
+        PennyWarmBackground()
     }
 }
 
@@ -660,6 +645,7 @@ private struct AccountEditorView: View {
 
     private let data = TransactionData.shared
     private let account: Account?
+    private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
 
     @State private var name: String
     @State private var institution: String
@@ -683,7 +669,16 @@ private struct AccountEditorView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.18, green: 0.11, blue: 0.08),
+                        Color(red: 0.08, green: 0.05, blue: 0.04),
+                        Color.black
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
                 ScrollView {
                     VStack(spacing: 18) {
@@ -716,20 +711,11 @@ private struct AccountEditorView: View {
                             )
                         }
 
-                        field(
+                        amountField(
                             title: type == .creditCard || type == .loan ? "Amount Owed" : "Balance",
                             text: $balanceText,
-                            placeholder: "0.00",
-                            keyboardType: .numbersAndPunctuation
+                            placeholder: "0.00"
                         )
-
-                        Text(type == .creditCard || type == .loan
-                            ? "Debt accounts are stored as negative balances automatically."
-                            : "This balance will feed your Bank tab and spending capacity."
-                        )
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(20)
                 }
@@ -744,7 +730,7 @@ private struct AccountEditorView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") { saveAccount() }
-                        .foregroundColor(isValid ? MeTheme.accent : .white.opacity(0.3))
+                        .foregroundColor(isValid ? warmAccent : .white.opacity(0.3))
                         .disabled(!isValid)
                 }
             }
@@ -760,7 +746,7 @@ private struct AccountEditorView: View {
 
             TextField(placeholder, text: text)
                 .keyboardType(keyboardType)
-                .textInputAutocapitalization(.words)
+                .textInputAutocapitalization(keyboardType == .default ? .words : .never)
                 .autocorrectionDisabled()
                 .foregroundColor(.white)
                 .padding(.horizontal, 14)
@@ -773,6 +759,37 @@ private struct AccountEditorView: View {
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
                 )
+        }
+    }
+
+    private func amountField(title: String, text: Binding<String>, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+
+            TextField(placeholder, text: text)
+                .keyboardType(.decimalPad)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 50)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white.opacity(0.05))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+                .onChange(of: text.wrappedValue) { _, newValue in
+                    let formatted = Self.formattedAmountInput(newValue)
+                    if formatted != newValue {
+                        text.wrappedValue = formatted
+                    }
+                }
         }
     }
 
@@ -805,63 +822,112 @@ private struct AccountEditorView: View {
         formatter.minimumFractionDigits = 2
         return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
     }
+
+    private static func formattedAmountInput(_ input: String) -> String {
+        let filtered = input.filter { "0123456789.,".contains($0) }
+        let normalized = filtered.replacingOccurrences(of: ",", with: "")
+        let parts = normalized.split(separator: ".", omittingEmptySubsequences: false)
+
+        let integerDigits = String(parts.first ?? "")
+        let hasDecimal = normalized.contains(".")
+        let rawFraction = parts.count > 1 ? String(parts[1]) : ""
+        let fractionDigits = String(rawFraction.prefix(2))
+
+        let integerNumber = Double(integerDigits.isEmpty ? "0" : integerDigits) ?? 0
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        formatter.maximumFractionDigits = 0
+        let groupedInteger = formatter.string(from: NSNumber(value: integerNumber)) ?? integerDigits
+
+        if hasDecimal {
+            return groupedInteger + "." + fractionDigits
+        }
+
+        if integerDigits.isEmpty {
+            return ""
+        }
+
+        return groupedInteger
+    }
 }
 
 private struct DailyBudgetEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
     private let data = TransactionData.shared
-    @State private var budgetText: String
-    @State private var monthlyBudgetText: String
+    private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
+    @State private var budgetMode: BudgetMode
+    @State private var budgetValueText: String
 
     init() {
-        _budgetText = State(initialValue: Self.decimalString(TransactionData.shared.dailyBudget))
-        _monthlyBudgetText = State(initialValue: Self.decimalString(TransactionData.shared.manualMonthlyBudget))
+        _budgetMode = State(initialValue: TransactionData.shared.budgetMode)
+        _budgetValueText = State(initialValue: Self.decimalString(TransactionData.shared.configuredBudgetValue))
     }
 
     private var budgetValue: Double? {
-        Self.parsedNumber(from: budgetText)
+        Self.parsedNumber(from: budgetValueText)
     }
 
-    private var monthlyBudgetValue: Double? {
-        Self.parsedNumber(from: monthlyBudgetText)
+    private var derivedDailyBudget: Double {
+        guard let value = budgetValue else { return 0 }
+        switch budgetMode {
+        case .daily:
+            return value
+        case .monthly:
+            return value / Double(data.daysInCurrentMonth)
+        }
+    }
+
+    private var derivedMonthlyBudget: Double {
+        guard let value = budgetValue else { return 0 }
+        switch budgetMode {
+        case .daily:
+            return value * Double(data.daysInCurrentMonth)
+        case .monthly:
+            return value
+        }
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.18, green: 0.11, blue: 0.08),
+                        Color(red: 0.08, green: 0.05, blue: 0.04),
+                        Color.black
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("DAILY BUDGET")
+                        Text("BUDGET MODE")
                             .font(.system(size: 10, weight: .bold))
                             .tracking(2)
                             .foregroundColor(.white.opacity(0.4))
 
-                        TextField("0.00", text: $budgetText)
-                            .keyboardType(.numbersAndPunctuation)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .frame(height: 52)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(Color.white.opacity(0.05))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                                    )
-                            )
+                        Picker("", selection: $budgetMode) {
+                            ForEach(BudgetMode.allCases, id: \.self) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("MONTHLY BUDGET")
+                        Text(budgetMode == .daily ? "DAILY BUDGET" : "MONTHLY BUDGET")
                             .font(.system(size: 10, weight: .bold))
                             .tracking(2)
                             .foregroundColor(.white.opacity(0.4))
 
-                        TextField("0.00", text: $monthlyBudgetText)
-                            .keyboardType(.numbersAndPunctuation)
+                        TextField("0.00", text: $budgetValueText)
+                            .keyboardType(.decimalPad)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                             .foregroundColor(.white)
                             .padding(.horizontal, 14)
                             .frame(height: 52)
@@ -873,18 +939,70 @@ private struct DailyBudgetEditorView: View {
                                             .stroke(Color.white.opacity(0.08), lineWidth: 1)
                                     )
                             )
+                            .onChange(of: budgetValueText) { _, newValue in
+                                let formatted = Self.formattedAmountInput(newValue)
+                                if formatted != newValue {
+                                    budgetValueText = formatted
+                                }
+                            }
                     }
 
-                    Text("These values drive the daily remaining amount and the monthly budget cards on the home and bank screens.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
-                        .lineSpacing(3)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("CALCULATED FOR \(data.daysInCurrentMonth)-DAY MONTH")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(2)
+                            .foregroundColor(.white.opacity(0.35))
+
+                        HStack {
+                            Text("Daily Budget")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white.opacity(0.7))
+                            Spacer()
+                            Text(currencyString(derivedDailyBudget))
+                                .font(.system(size: 14, weight: .semibold, design: .serif))
+                                .foregroundColor(.white)
+                        }
+
+                        HStack {
+                            Text("Monthly Budget")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white.opacity(0.7))
+                            Spacer()
+                            Text(currencyString(derivedMonthlyBudget))
+                                .font(.system(size: 14, weight: .semibold, design: .serif))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color.white.opacity(0.04))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                    )
 
                     Spacer()
                 }
                 .padding(20)
             }
-            .navigationTitle("Daily Budget")
+            .onChange(of: budgetMode) { oldMode, newMode in
+                guard oldMode != newMode, let currentValue = budgetValue else { return }
+                let convertedValue: Double
+
+                switch (oldMode, newMode) {
+                case (.daily, .monthly):
+                    convertedValue = currentValue * Double(data.daysInCurrentMonth)
+                case (.monthly, .daily):
+                    convertedValue = currentValue / Double(data.daysInCurrentMonth)
+                default:
+                    convertedValue = currentValue
+                }
+
+                budgetValueText = Self.decimalString(convertedValue)
+            }
+            .navigationTitle("Budget Setup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -894,11 +1012,10 @@ private struct DailyBudgetEditorView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
-                        data.dailyBudget = max(budgetValue ?? 0, 0)
-                        data.manualMonthlyBudget = max(monthlyBudgetValue ?? 0, 0)
+                        data.setBudget(mode: budgetMode, value: max(budgetValue ?? 0, 0))
                         dismiss()
                     }
-                    .foregroundColor(MeTheme.accent)
+                    .foregroundColor(warmAccent)
                 }
             }
         }
@@ -915,6 +1032,43 @@ private struct DailyBudgetEditorView: View {
         formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = 2
         return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+
+    private static func formattedAmountInput(_ input: String) -> String {
+        let filtered = input.filter { "0123456789.,".contains($0) }
+        let normalized = filtered.replacingOccurrences(of: ",", with: "")
+        let parts = normalized.split(separator: ".", omittingEmptySubsequences: false)
+
+        let integerDigits = String(parts.first ?? "")
+        let hasDecimal = normalized.contains(".")
+        let rawFraction = parts.count > 1 ? String(parts[1]) : ""
+        let fractionDigits = String(rawFraction.prefix(2))
+
+        let integerNumber = Double(integerDigits.isEmpty ? "0" : integerDigits) ?? 0
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        formatter.maximumFractionDigits = 0
+        let groupedInteger = formatter.string(from: NSNumber(value: integerNumber)) ?? integerDigits
+
+        if hasDecimal {
+            return groupedInteger + "." + fractionDigits
+        }
+
+        if integerDigits.isEmpty {
+            return ""
+        }
+
+        return groupedInteger
+    }
+
+    private func currencyString(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
     }
 }
 

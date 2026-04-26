@@ -60,6 +60,11 @@ enum AccountType: String, CaseIterable, Codable {
     case cash = "Cash"
 }
 
+enum BudgetMode: String, CaseIterable, Codable {
+    case daily = "Daily"
+    case monthly = "Monthly"
+}
+
 struct Account: Identifiable, Codable {
     let id: UUID
     let name: String
@@ -85,6 +90,44 @@ struct Account: Identifiable, Codable {
         self.balance = balance
         self.lastUpdated = lastUpdated
         self.isHidden = isHidden
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, type, institution, balance, lastUpdated, isHidden
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        type = try container.decodeIfPresent(AccountType.self, forKey: .type) ?? .checking
+        institution = try container.decodeIfPresent(String.self, forKey: .institution) ?? ""
+
+        if let numericBalance = try container.decodeIfPresent(Double.self, forKey: .balance) {
+            balance = numericBalance
+        } else if let stringBalance = try container.decodeIfPresent(String.self, forKey: .balance) {
+            let cleaned = stringBalance
+                .replacingOccurrences(of: "$", with: "")
+                .replacingOccurrences(of: ",", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            balance = Double(cleaned) ?? 0
+        } else {
+            balance = 0
+        }
+
+        lastUpdated = try container.decodeIfPresent(Date.self, forKey: .lastUpdated) ?? Date()
+        isHidden = try container.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(type, forKey: .type)
+        try container.encode(institution, forKey: .institution)
+        try container.encode(balance, forKey: .balance)
+        try container.encode(lastUpdated, forKey: .lastUpdated)
+        try container.encode(isHidden, forKey: .isHidden)
     }
 }
 
@@ -402,8 +445,10 @@ class TransactionData {
     static let shared = TransactionData()
 
     private let groupsKey = "penny_transaction_groups"
-    private let budgetKey = "penny_daily_budget"
-    private let monthlyBudgetKey = "penny_monthly_budget"
+    private let budgetModeKey = "penny_budget_mode"
+    private let budgetValueKey = "penny_budget_value"
+    private let legacyDailyBudgetKey = "penny_daily_budget"
+    private let legacyMonthlyBudgetKey = "penny_monthly_budget"
     private let subscriptionsKey = "penny_recurring_subscriptions"
     private let accountsKey = "penny_accounts"
     private let manualV1ResetKey = "penny_manual_v1_reset_complete"
@@ -436,12 +481,12 @@ class TransactionData {
         didSet { saveSubscriptions() }
     }
 
-    var dailyBudget: Double {
-        didSet { UserDefaults.standard.set(dailyBudget, forKey: budgetKey) }
+    var budgetMode: BudgetMode {
+        didSet { UserDefaults.standard.set(budgetMode.rawValue, forKey: budgetModeKey) }
     }
 
-    var manualMonthlyBudget: Double {
-        didSet { UserDefaults.standard.set(manualMonthlyBudget, forKey: monthlyBudgetKey) }
+    var budgetBaseValue: Double {
+        didSet { UserDefaults.standard.set(budgetBaseValue, forKey: budgetValueKey) }
     }
 
     private init() {
@@ -451,14 +496,29 @@ class TransactionData {
             defaults.removeObject(forKey: groupsKey)
             defaults.removeObject(forKey: subscriptionsKey)
             defaults.removeObject(forKey: accountsKey)
-            defaults.set(0, forKey: budgetKey)
+            defaults.set(BudgetMode.daily.rawValue, forKey: budgetModeKey)
+            defaults.set(0, forKey: budgetValueKey)
             defaults.set(true, forKey: manualV1ResetKey)
         }
 
-        let savedBudget = defaults.double(forKey: budgetKey)
-        self.dailyBudget = savedBudget > 0 ? savedBudget : 0.0
-        let savedMonthlyBudget = defaults.double(forKey: monthlyBudgetKey)
-        self.manualMonthlyBudget = savedMonthlyBudget > 0 ? savedMonthlyBudget : 0.0
+        let savedBudgetMode = defaults.string(forKey: budgetModeKey).flatMap(BudgetMode.init(rawValue:))
+        let savedBudgetValue = defaults.double(forKey: budgetValueKey)
+        let legacyDailyBudget = defaults.double(forKey: legacyDailyBudgetKey)
+        let legacyMonthlyBudget = defaults.double(forKey: legacyMonthlyBudgetKey)
+
+        if let savedBudgetMode, savedBudgetValue > 0 {
+            self.budgetMode = savedBudgetMode
+            self.budgetBaseValue = savedBudgetValue
+        } else if legacyMonthlyBudget > 0 {
+            self.budgetMode = .monthly
+            self.budgetBaseValue = legacyMonthlyBudget
+        } else if legacyDailyBudget > 0 {
+            self.budgetMode = .daily
+            self.budgetBaseValue = legacyDailyBudget
+        } else {
+            self.budgetMode = .daily
+            self.budgetBaseValue = 0.0
+        }
         if let data = defaults.data(forKey: accountsKey),
            let decoded = try? JSONDecoder().decode([Account].self, from: data) {
             self.accounts = decoded
@@ -499,6 +559,39 @@ class TransactionData {
         syncRecurringTransactions()
     }
 
+    var daysInCurrentMonth: Int {
+        Calendar.current.range(of: .day, in: .month, for: Date())?.count ?? 30
+    }
+
+    var configuredBudgetValue: Double {
+        budgetBaseValue
+    }
+
+    var dailyBudget: Double {
+        guard budgetBaseValue > 0 else { return 0 }
+        switch budgetMode {
+        case .daily:
+            return budgetBaseValue
+        case .monthly:
+            return budgetBaseValue / Double(daysInCurrentMonth)
+        }
+    }
+
+    var derivedMonthlyBudget: Double {
+        guard budgetBaseValue > 0 else { return 0 }
+        switch budgetMode {
+        case .daily:
+            return budgetBaseValue * Double(daysInCurrentMonth)
+        case .monthly:
+            return budgetBaseValue
+        }
+    }
+
+    func setBudget(mode: BudgetMode, value: Double) {
+        budgetMode = mode
+        budgetBaseValue = max(value, 0)
+    }
+
     private func save() {
         if let encoded = try? JSONEncoder().encode(groups) {
             UserDefaults.standard.set(encoded, forKey: groupsKey)
@@ -514,6 +607,7 @@ class TransactionData {
     private func saveAccounts() {
         if let encoded = try? JSONEncoder().encode(accounts) {
             UserDefaults.standard.set(encoded, forKey: accountsKey)
+            UserDefaults.standard.synchronize()
         }
     }
 
@@ -1078,7 +1172,7 @@ class TransactionData {
         let categoryTotal = budgetCategories
             .filter { !$0.isExcluded }
             .reduce(0) { $0 + $1.monthlyBudget }
-        return manualMonthlyBudget > 0 ? manualMonthlyBudget : categoryTotal
+        return derivedMonthlyBudget > 0 ? derivedMonthlyBudget : categoryTotal
     }
 
     var safeToSpendThisMonth: Double {
