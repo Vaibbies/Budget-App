@@ -23,6 +23,7 @@ struct TransactionsView: View {
     private let scope: Scope
     @State private var showAddTransaction = false
     @State private var editingInfo: EditInfo? = nil
+    @State private var selectedAccountId: UUID? = nil
 
     struct EditInfo: Identifiable {
         let id = UUID()
@@ -37,24 +38,37 @@ struct TransactionsView: View {
     }
 
     private var visibleGroups: [(groupIndex: Int, group: SpendingTransactionGroup)] {
+        let scopedGroups: [(offset: Int, element: SpendingTransactionGroup)]
         switch scope {
         case .all:
-            return Array(data.groups.enumerated()).map { ($0.offset, $0.element) }
+            scopedGroups = Array(data.groups.enumerated())
         case .today:
-            return Array(data.groups.enumerated()).filter { _, group in
+            scopedGroups = Array(data.groups.enumerated()).filter { _, group in
                 data.isGroupInToday(group)
-            }.map { ($0.offset, $0.element) }
+            }
+        }
+
+        return scopedGroups.compactMap { index, group in
+            let filteredTransactions = group.transactions.filter { transaction in
+                selectedAccountId.map { transaction.accountId == $0 } ?? true
+            }
+
+            guard !filteredTransactions.isEmpty else { return nil }
+
+            return (
+                groupIndex: index,
+                group: SpendingTransactionGroup(
+                    id: group.id,
+                    title: group.title,
+                    transactions: filteredTransactions
+                )
+            )
         }
     }
 
     private var totalVisibleSpent: Double {
-        switch scope {
-        case .all:
-            return visibleGroups.reduce(0) { running, item in
-                running + item.group.transactions.reduce(0) { $0 + $1.amountValue }
-            }
-        case .today:
-            return data.dailySpent
+        visibleGroups.reduce(0) { running, item in
+            running + item.group.transactions.reduce(0) { $0 + $1.amountValue }
         }
     }
 
@@ -77,9 +91,9 @@ struct TransactionsView: View {
             return [("TOD", totalVisibleSpent)]
         }
 
-        let totals = data.groups.prefix(6).map { group in
-            (label: String(group.title.prefix(3)).uppercased(),
-             total: group.transactions.reduce(0) { $0 + $1.amountValue })
+        let totals = visibleGroups.prefix(6).map { entry in
+            (label: String(entry.group.title.prefix(3)).uppercased(),
+             total: entry.group.transactions.reduce(0) { $0 + $1.amountValue })
         }.reversed()
 
         let values = Array(totals)
@@ -93,6 +107,10 @@ struct TransactionsView: View {
             VStack(spacing: 0) {
                 headerSection
                 spentSection
+                if !data.visibleAccounts.isEmpty {
+                    accountFilterBar
+                        .padding(.bottom, 8)
+                }
 
                 List {
                     ForEach(visibleGroups, id: \.group.id) { entry in
@@ -238,7 +256,7 @@ struct TransactionsView: View {
                 .foregroundColor(TransactionsTheme.muted)
                 .tracking(2)
 
-            Text("$\(String(format: "%.2f", scope == .today ? totalVisibleSpent : data.totalSpent))")
+            Text("$\(String(format: "%.2f", totalVisibleSpent))")
                 .font(.system(size: 48, weight: .regular, design: .serif))
                 .foregroundColor(.white)
                 .tracking(-1)
@@ -269,6 +287,44 @@ struct TransactionsView: View {
         .padding(.bottom, 16)
     }
 
+    private var accountFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                accountFilterChip(title: "All", isSelected: selectedAccountId == nil) {
+                    selectedAccountId = nil
+                }
+
+                ForEach(data.visibleAccounts, id: \.id) { account in
+                    accountFilterChip(title: account.name, isSelected: selectedAccountId == account.id) {
+                        selectedAccountId = account.id
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private func accountFilterChip(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.light()
+            action()
+        } label: {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(isSelected ? .black : .white.opacity(0.72))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Color.white : Color.white.opacity(0.08))
+                        .overlay(
+                            Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Delete
     private func deleteTransaction(groupIndex: Int, txIndex: Int, transactionId: UUID) {
         Haptics.medium()
@@ -290,6 +346,11 @@ struct TransactionsView: View {
     // MARK: - Row
     private func fullTransactionRow(_ transaction: SpendingTransaction) -> some View {
         let isSubscription = transaction.category == .subscriptions
+        let subtitleParts: [String] = [transaction.time, transaction.subtitle, data.accountName(for: transaction.accountId)]
+            .compactMap { value in
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
 
         return HStack(spacing: 16) {
             RoundedRectangle(cornerRadius: 12)
@@ -310,7 +371,7 @@ struct TransactionsView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.white)
 
-                Text("\(transaction.time) • \(transaction.subtitle)")
+                Text(subtitleParts.joined(separator: " • "))
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(TransactionsTheme.muted)
             }
@@ -365,6 +426,7 @@ struct EditTransactionView: View {
     @State private var merchantName: String
     @State private var selectedCategory: SpendingCategory
     @State private var selectedDate: Date
+    @State private var selectedAccountId: UUID?
     @State private var isImpulse: Bool
     @State private var isListening = false
 
@@ -378,6 +440,7 @@ struct EditTransactionView: View {
         _merchantName = State(initialValue: transaction.title)
         _amountString = State(initialValue: String(Int(transaction.amountValue * 100)))
         _selectedCategory = State(initialValue: transaction.category)
+        _selectedAccountId = State(initialValue: transaction.accountId)
         _isImpulse = State(initialValue: transaction.isImpulse)
 
         _selectedDate = State(initialValue: self.originalGroupDate)
@@ -526,6 +589,33 @@ struct EditTransactionView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
 
+                if !data.visibleAccounts.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("ACCOUNT")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(2)
+                            .foregroundColor(.white.opacity(0.4))
+
+                        Picker("Account", selection: $selectedAccountId) {
+                            ForEach(data.visibleAccounts, id: \.id) { account in
+                                Text(account.name).tag(Optional(account.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.white.opacity(0.06))
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        )
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+                }
+
                 KeypadView { key in handleKey(key) }
                     .padding(.horizontal, 24)
 
@@ -613,7 +703,7 @@ struct EditTransactionView: View {
             bgColor: selectedCategory.color.opacity(0.1),
             borderColor: selectedCategory.color.opacity(0.2),
             category: selectedCategory,
-            accountId: transaction.accountId,
+            accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
             kind: transaction.kind,
             merchantRaw: merchantName.isEmpty ? transaction.merchantRaw : merchantName,
             merchantNormalized: merchantName.isEmpty ? transaction.merchantNormalized : data.normalizeMerchant(merchantName),

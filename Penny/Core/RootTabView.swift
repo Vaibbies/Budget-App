@@ -3,6 +3,7 @@ import SwiftUI
 struct RootTabView: View {
     @State private var selectedTab: Int = 1
     @State private var showMindfulPause = false
+    @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
     @Environment(\.scenePhase) private var scenePhase
     @Environment(TransactionData.self) private var data
 
@@ -11,31 +12,31 @@ struct RootTabView: View {
             TabView(selection: $selectedTab) {
                 SpendingHomeView()
                     .tabItem {
-                        Label("Spending", systemImage: "dollarsign.circle.fill")
+                        Label(language.text(.spending), systemImage: "dollarsign.circle.fill")
                     }
                     .tag(1)
 
                 FriendsView()
                     .tabItem {
-                        Label("Friends", systemImage: "person.2.fill")
+                        Label(language.text(.friends), systemImage: "person.2.fill")
                     }
                     .tag(0)
 
                 MeView()
                     .tabItem {
-                        Label("Me", systemImage: "person.fill")
+                        Label(language.text(.me), systemImage: "person.fill")
                     }
                     .tag(2)
 
                 BankView()
                     .tabItem {
-                        Label("Bank", systemImage: "creditcard.fill")
+                        Label(language.text(.bank), systemImage: "creditcard.fill")
                     }
                     .tag(3)
 
                 PennyChatView(selectedTab: $selectedTab, showChat: .constant(true))
                     .tabItem {
-                        Label("Chat", systemImage: "bubble.fill")
+                        Label(language.text(.chat), systemImage: "bubble.fill")
                     }
                     .tag(4)
             }
@@ -64,6 +65,10 @@ struct RootTabView: View {
                 data.syncRecurringTransactions()
             }
         }
+    }
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageCode) ?? .english
     }
 }
 

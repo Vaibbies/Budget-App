@@ -1028,6 +1028,35 @@ class TransactionData {
         ?? accounts.first
     }
 
+    func account(for id: UUID?) -> Account? {
+        guard let id else { return nil }
+        return accounts.first(where: { $0.id == id })
+    }
+
+    func accountName(for id: UUID?) -> String? {
+        account(for: id)?.name
+    }
+
+    func transactions(forAccount id: UUID?, inMonth date: Date = Date()) -> [SpendingTransaction] {
+        transactions(forMonth: date, accountId: id)
+    }
+
+    func monthlySpend(forAccount id: UUID?, inMonth date: Date = Date()) -> Double {
+        transactions(forAccount: id, inMonth: date)
+            .filter { $0.kind == .spending && !$0.isExcludedFromBudget && !excludedCategories.contains($0.category) }
+            .reduce(0) { $0 + $1.amountValue }
+    }
+
+    func monthlyIncome(forAccount id: UUID?, inMonth date: Date = Date()) -> Double {
+        transactions(forAccount: id, inMonth: date)
+            .filter { $0.kind == .income }
+            .reduce(0) { $0 + $1.amountSignedValue }
+    }
+
+    func monthlyNet(forAccount id: UUID?, inMonth date: Date = Date()) -> Double {
+        monthlyIncome(forAccount: id, inMonth: date) - monthlySpend(forAccount: id, inMonth: date)
+    }
+
     var visibleAccounts: [Account] {
         accounts.filter { !$0.isHidden }
     }

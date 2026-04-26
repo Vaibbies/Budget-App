@@ -337,7 +337,13 @@ struct BankView: View {
     }
 
     private func accountRow(_ account: Account) -> some View {
-        HStack(spacing: 14) {
+        let monthSpend = data.monthlySpend(forAccount: account.id)
+        let monthIncome = data.monthlyIncome(forAccount: account.id)
+        let monthNet = data.monthlyNet(forAccount: account.id)
+        let transactionCount = data.transactions(forAccount: account.id).count
+        let hasActivity = transactionCount > 0 || monthSpend > 0 || monthIncome > 0
+
+        return HStack(spacing: 14) {
             Circle()
                 .fill(accountAccent(for: account.type).opacity(0.14))
                 .frame(width: 38, height: 38)
@@ -395,6 +401,58 @@ struct BankView: View {
             .buttonStyle(.plain)
         }
         .padding(16)
+        .overlay(alignment: .bottomLeading) {
+            Group {
+                if hasActivity {
+                    HStack(spacing: 8) {
+                        accountActivityPill(
+                            title: "Spent",
+                            value: currencyString(monthSpend),
+                            accent: warmAccent
+                        )
+
+                        if monthIncome > 0 {
+                            accountActivityPill(
+                                title: "Income",
+                                value: currencyString(monthIncome),
+                                accent: warmGold
+                            )
+                        }
+
+                        accountActivityPill(
+                            title: "Net",
+                            value: currencyString(monthNet),
+                            accent: monthNet >= 0 ? warmOlive : warmRose
+                        )
+                    }
+                    .padding(.leading, 52)
+                    .padding(.bottom, 6)
+                }
+            }
+        }
+        .padding(.bottom, hasActivity ? 36 : 0)
+    }
+
+    private func accountActivityPill(title: String, value: String, accent: Color) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(accent)
+                .frame(width: 5, height: 5)
+
+            Text("\(title): \(value)")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.white.opacity(0.72))
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.05))
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
+        )
     }
 
     private var goalsSection: some View {

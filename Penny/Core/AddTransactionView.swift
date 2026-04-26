@@ -7,6 +7,7 @@ struct AddTransactionView: View {
     @State private var merchantName = ""
     @State private var selectedCategory: SpendingCategory = .dining
     @State private var selectedDate = Date()
+    @State private var selectedAccountId: UUID?
     @State private var isImpulse = false
     @State private var isListening = false
     @State private var showRecurringPrompt = false
@@ -149,6 +150,12 @@ struct AddTransactionView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
 
+                if !data.visibleAccounts.isEmpty {
+                    accountSelector
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 20)
+                }
+
                 KeypadView { key in handleKey(key) }
                     .padding(.horizontal, 24)
 
@@ -210,6 +217,9 @@ struct AddTransactionView: View {
             .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
         }
+        .onAppear {
+            selectedAccountId = data.defaultSpendingAccount?.id
+        }
     }
 
     private func handleKey(_ key: String) {
@@ -255,7 +265,7 @@ struct AddTransactionView: View {
             bgColor: selectedCategory.color.opacity(0.1),
             borderColor: selectedCategory.color.opacity(0.2),
             category: selectedCategory,
-            accountId: data.defaultSpendingAccount?.id,
+            accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
             kind: .spending,
             merchantRaw: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
             merchantNormalized: data.normalizeMerchant(merchantName.isEmpty ? selectedCategory.rawValue : merchantName)
@@ -286,6 +296,31 @@ struct AddTransactionView: View {
     private func startDictation() {
         Haptics.medium()
         isListening.toggle()
+    }
+
+    private var accountSelector: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ACCOUNT")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+
+            Picker("Account", selection: $selectedAccountId) {
+                ForEach(data.visibleAccounts, id: \.id) { account in
+                    Text(account.name).tag(Optional(account.id))
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(.white)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.white.opacity(0.06))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+            )
+        }
     }
 }
 

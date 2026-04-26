@@ -4,120 +4,56 @@ import SwiftUI
 struct NotificationsSettingsView: View {
 
     @Environment(\.dismiss) private var dismiss
-
-    @State private var spendingAlerts  = true
-    @State private var budgetWarnings  = true
-    @State private var savingTips      = true
-    @State private var weeklyDigest    = false
+    @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
+    @AppStorage("penny.notifications.spendingAlerts") private var spendingAlerts = true
+    @AppStorage("penny.notifications.budgetWarnings") private var budgetWarnings = true
+    @AppStorage("penny.notifications.weeklyDigest") private var weeklyDigest = false
+    @AppStorage("penny.notifications.savingTips") private var savingTips = false
+    @AppStorage("penny.notifications.billReminders") private var billReminders = true
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
                 headerSection
 
-                sectionLabel("Alert Types")
+                sectionLabel(language.text(.alerts))
 
                 notifCard {
                     toggleRow(
                         icon: "bell.badge.fill",
-                        title: "Spending Alerts",
-                        description: "Instant updates on large purchases",
+                        title: language.text(.spendingAlerts),
+                        description: language.text(.spendingAlertsDescription),
                         isOn: $spendingAlerts
                     )
                     divider
                     toggleRow(
                         icon: "exclamationmark.circle.fill",
-                        title: "Budget Warnings",
-                        description: "Notify when near monthly limits",
+                        title: language.text(.budgetProgress),
+                        description: language.text(.budgetProgressDescription),
                         isOn: $budgetWarnings
                     )
                     divider
                     toggleRow(
-                        icon: "sparkles",
-                        title: "Penny's Saving Tips",
-                        description: "AI insights to reach goals faster",
-                        isOn: $savingTips
+                        icon: "calendar",
+                        title: language.text(.weeklyDigest),
+                        description: language.text(.weeklyDigestDescription),
+                        isOn: $weeklyDigest
                     )
                     divider
                     toggleRow(
-                        icon: "calendar",
-                        title: "Weekly Digest",
-                        description: "Summary of your habits every Sunday",
-                        isOn: $weeklyDigest
+                        icon: "creditcard.trianglebadge.exclamationmark",
+                        title: language.text(.billReminders),
+                        description: language.text(.billRemindersDescription),
+                        isOn: $billReminders
+                    )
+                    divider
+                    toggleRow(
+                        icon: "sparkles",
+                        title: language.text(.savingTips),
+                        description: language.text(.savingTipsDescription),
+                        isOn: $savingTips
                     )
                 }
-                .padding(.bottom, 24)
-
-                // ── Preferences ──────────────────────────────────────────
-                sectionLabel("Preferences")
-
-                notifCard {
-                    HStack {
-                        iconCircle("moon.fill")
-                        Text("Quiet Hours")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                        Spacer()
-                        Text("10 PM – 7 AM")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(MeTheme.accent)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.2))
-                    }
-                    .padding(16)
-
-                    divider
-
-                    HStack {
-                        iconCircle("dollarsign.circle.fill")
-                        Text("Minimum Alert Amount")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                        Spacer()
-                        Text("$20.00")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.5))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.2))
-                    }
-                    .padding(16)
-                }
-                .padding(.bottom, 24)
-
-                // ── Smart Delivery banner ─────────────────────────────────
-                HStack(alignment: .top, spacing: 12) {
-                    Circle()
-                        .fill(MeTheme.accent.opacity(0.12))
-                        .frame(width: 36, height: 36)
-                        .overlay(
-                            Image(systemName: "shield.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(MeTheme.accent)
-                        )
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("SMART DELIVERY")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(MeTheme.accent)
-                            .tracking(1.5)
-
-                        Text("Penny will prioritize notifications based on your activity and current budget health to avoid distraction.")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.5))
-                            .lineSpacing(3)
-                    }
-                }
-                .padding(16)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(MeTheme.accent.opacity(0.05))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(MeTheme.accent.opacity(0.12), lineWidth: 1)
-                        )
-                )
                 .padding(.bottom, 40)
             }
             .padding(.horizontal, 20)
@@ -144,7 +80,7 @@ struct NotificationsSettingsView: View {
 
             Spacer()
 
-            Text("NOTIFICATIONS")
+            Text(language.text(.notifications).uppercased())
                 .font(.system(size: 13, weight: .semibold))
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.4))
@@ -224,6 +160,10 @@ struct NotificationsSettingsView: View {
 
     private var backgroundGradient: some View {
         PennyWarmBackground()
+    }
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageCode) ?? .english
     }
 }
 

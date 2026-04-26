@@ -20,6 +20,7 @@ struct SpendingHomeView: View {
     @State private var transactionsSheetScope: TransactionsSheetScope = .all
     @State private var showRecurring = false
     @State private var selectedTrendPeriod: TrendPeriod = .weekly
+    @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
     @AppStorage("penny.profile.name") private var storedProfileName: String = "Alex Rivers"
             
     @Environment(TransactionData.self) private var data
@@ -27,9 +28,9 @@ struct SpendingHomeView: View {
     var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
         let dayGreeting: String
-        if hour < 12 { dayGreeting = "Good morning" }
-        else if hour < 17 { dayGreeting = "Good afternoon" }
-        else { dayGreeting = "Good evening" }
+        if hour < 12 { dayGreeting = language.text(.goodMorning) }
+        else if hour < 17 { dayGreeting = language.text(.goodAfternoon) }
+        else { dayGreeting = language.text(.goodEvening) }
         return "\(dayGreeting), \(firstName)"
     }
 
@@ -43,6 +44,10 @@ struct SpendingHomeView: View {
         let trimmed = storedProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
         let rawFirst = trimmed.split(separator: " ").first.map(String.init) ?? "Alex"
         return rawFirst.isEmpty ? "Alex" : rawFirst
+    }
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageCode) ?? .english
     }
 
     // Now pulls from your real recurring subscriptions instead of hardcoded values

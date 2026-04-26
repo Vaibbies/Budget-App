@@ -8,29 +8,17 @@ struct SettingsView: View {
     @AppStorage("penny.profile.name") private var storedName: String = ""
     @AppStorage("penny.profile.email") private var storedEmail: String = ""
     @AppStorage("penny.logoDev.publishableKey") private var storedLogoDevKey: String = ""
+    @AppStorage("penny.preferences.languageCode") private var storedLanguageCode = AppLanguage.english.rawValue
+    @AppStorage(Haptics.settingsKey) private var hapticsEnabled = true
 
     @State private var profile = SettingsProfile(
         name: "",
-        email: "",
-        twoFactorEnabled: true
-    )
-
-    @State private var preferences = SettingsPreferences(
-        currency: "USD ($)",
-        language: "English",
-        theme: "Deep Dark",
-        timezone: "GMT -5"
-    )
-
-    @State private var notifications = SettingsNotifications(
-        spending: "Immediate",
-        budgets: "Daily",
-        reports: "Weekly",
-        tips: "Paused"
+        email: ""
     )
 
     // Editing
     @State private var activeProfileEditor: Field?
+    @State private var activePreferenceEditor: PreferenceSheet?
     @State private var showLogoProviderEditor = false
     @State private var draftFirstName = ""
     @State private var draftLastName = ""
@@ -45,75 +33,64 @@ struct SettingsView: View {
         var id: Self { self }
     }
 
+    private enum PreferenceSheet: Identifiable {
+        case language
+
+        var id: Self { self }
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
                 headerSection
 
                 // ── Account & Security ───────────────────────────────────
-                sectionLabel("Account & Security")
+                sectionLabel(language.text(.accountSecurity))
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     tappableGridCell(
-                        label: "Name",
+                        label: language.text(.name),
                         value: profile.name
                     ) {
                         openEditor(.name)
                     }
 
-                    gridCell(
-                        label: "Two-Factor",
-                        value: profile.twoFactorEnabled ? "Active" : "Inactive",
-                        valueColor: MeTheme.success
+                    tappableGridCell(
+                        label: language.text(.email),
+                        value: profile.email
+                    ) {
+                        openEditor(.email)
+                    }
+                }
+
+                divider
+
+                sectionLabel(language.text(.app))
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    tappableGridCell(
+                        label: language.text(.language),
+                        value: selectedLanguage.title
+                    ) {
+                        activePreferenceEditor = .language
+                    }
+
+                    toggleGridCell(
+                        label: language.text(.haptics),
+                        value: hapticsEnabled ? language.text(.on) : language.text(.off),
+                        isOn: $hapticsEnabled
                     )
                 }
 
                 tappableGridCell(
-                    label: "Email",
-                    value: profile.email
-                ) {
-                    openEditor(.email)
-                }
-                .padding(.top, 12)
-
-                divider
-
-                // ── Preferences ──────────────────────────────────────────
-                sectionLabel("Preferences")
-
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    gridCell(label: "Currency",  value: preferences.currency)
-                    gridCell(label: "Language",  value: preferences.language)
-                    gridCell(label: "Theme",     value: preferences.theme)
-                    gridCell(label: "Timezone",  value: preferences.timezone)
-                }
-
-                tappableGridCell(
-                    label: "Merchant Logos",
-                    value: storedLogoDevKey.isEmpty ? "Not Configured" : "Logo.dev Connected",
+                    label: language.text(.merchantLogos),
+                    value: storedLogoDevKey.isEmpty ? language.text(.notConfigured) : language.text(.logoConnected),
                     valueColor: storedLogoDevKey.isEmpty ? .white.opacity(0.6) : MeTheme.success,
                     hasAccent: !storedLogoDevKey.isEmpty
                 ) {
                     openLogoProviderEditor()
                 }
                 .padding(.top, 12)
-
-                divider
-
-                // ── Notification Grid ────────────────────────────────────
-                sectionLabel("Notification Grid")
-
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    gridCell(label: "Spending", value: notifications.spending, hasAccent: true)
-                    gridCell(label: "Budgets",  value: notifications.budgets)
-                    gridCell(label: "Reports",  value: notifications.reports)
-                    gridCell(label: "Tips",     value: notifications.tips, isDisabled: true)
-                }
-
-                // ── System Info ──────────────────────────────────────────
-                systemInfoCard
-                    .padding(.top, 32)
-                    .padding(.bottom, 40)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 120)
@@ -134,6 +111,14 @@ struct SettingsView: View {
             profileEditorSheet(for: field)
                 .presentationCornerRadius(26)
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $activePreferenceEditor) { sheet in
+            switch sheet {
+            case .language:
+                languageSelectionSheet
+                    .presentationCornerRadius(26)
+                    .presentationDragIndicator(.visible)
+            }
         }
         .sheet(isPresented: $showLogoProviderEditor) {
             logoProviderSheet
@@ -157,7 +142,7 @@ struct SettingsView: View {
 
             Spacer()
 
-            Text("SETTINGS")
+            Text(language.text(.settings).uppercased())
                 .font(.system(size: 13, weight: .semibold))
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.4))
@@ -231,6 +216,34 @@ struct SettingsView: View {
         .opacity(isDisabled ? 0.4 : 1.0)
     }
 
+    private func toggleGridCell(label: String, value: String, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(label.uppercased())
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white.opacity(0.4))
+                    .tracking(1.5)
+
+                Text(value)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+
+            Spacer(minLength: 12)
+
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(MeTheme.accent)
+        }
+        .padding(16)
+        .background(MeTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(MeTheme.glassBorder, lineWidth: 1)
+        )
+    }
+
     // MARK: - Editor Sheet
     private func profileEditorSheet(for field: Field) -> some View {
         ZStack {
@@ -258,32 +271,25 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(field == .name ? "Edit Name" : "Edit Email")
+                        Text(field == .name ? language.text(.editName) : language.text(.editEmail))
                             .font(.system(size: 22, weight: .semibold))
                             .foregroundColor(.white)
-
-                        if field == .email {
-                            Text("Update the email address tied to your profile.")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white.opacity(0.55))
-                                .lineSpacing(3)
-                        }
                     }
                 }
                 .padding(.top, 6)
 
                 VStack(spacing: 0) {
                     if field == .name {
-                        compactField(title: "First Name", text: $draftFirstName, keyboard: .default)
+                        compactField(title: language.text(.firstName), text: $draftFirstName, keyboard: .default)
                             .focused($focusedField, equals: .name)
 
                         Divider()
                             .background(Color.white.opacity(0.06))
                             .padding(.leading, 16)
 
-                        compactField(title: "Last Name", text: $draftLastName, keyboard: .default)
+                        compactField(title: language.text(.lastName), text: $draftLastName, keyboard: .default)
                     } else {
-                        compactField(title: "Email", text: $draftEmail, keyboard: .emailAddress)
+                        compactField(title: language.text(.email), text: $draftEmail, keyboard: .emailAddress)
                             .focused($focusedField, equals: .email)
                     }
                 }
@@ -294,27 +300,13 @@ struct SettingsView: View {
                         .stroke(Color.white.opacity(0.04), lineWidth: 1)
                 )
 
-                if field == .email {
-                    Text("Use the email you want associated with reminders and support requests.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
-                        .lineSpacing(3)
-                        .padding(.horizontal, 4)
-                } else {
-                    Text("This name is also used on the Spending home greeting.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
-                        .lineSpacing(3)
-                        .padding(.horizontal, 4)
-                }
-
                 Spacer(minLength: 0)
 
                 HStack(spacing: 12) {
                     Button {
                         dismissProfileEditor()
                     } label: {
-                        Text("Cancel")
+                        Text(language.text(.cancel))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.white.opacity(0.72))
                             .frame(maxWidth: .infinity)
@@ -331,7 +323,7 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
 
                     Button { saveFromSheet(field) } label: {
-                        Text("Save")
+                        Text(language.text(.save))
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -370,7 +362,9 @@ struct SettingsView: View {
     }
 
     private func compactField(title: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isEmailField = keyboard == .emailAddress
+
+        return VStack(alignment: .leading, spacing: 8) {
             Text(title.uppercased())
                 .font(.system(size: 10, weight: .bold))
                 .foregroundColor(.white.opacity(0.4))
@@ -378,8 +372,8 @@ struct SettingsView: View {
 
             TextField(title, text: text)
                 .keyboardType(keyboard)
-                .textInputAutocapitalization(title == "Email" ? .never : .words)
-                .autocorrectionDisabled(title == "Email")
+                .textInputAutocapitalization(isEmailField ? .never : .words)
+                .autocorrectionDisabled(isEmailField)
                 .foregroundColor(.white)
                 .padding(.horizontal, 14)
                 .frame(height: 48)
@@ -406,11 +400,11 @@ struct SettingsView: View {
 
             VStack(spacing: 16) {
                 HStack {
-                    Text("Merchant Logos")
+                    Text(language.text(.merchantLogos))
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(.white)
                     Spacer()
-                    Button("Done") { saveLogoProvider() }
+                    Button(language.text(.save)) { saveLogoProvider() }
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(MeTheme.accent)
                 }
@@ -500,36 +494,64 @@ struct SettingsView: View {
         }
     }
 
-    private func fieldCard(title: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.white.opacity(0.4))
-                .tracking(2)
+    private var languageSelectionSheet: some View {
+        ZStack {
+            MeTheme.canvas.ignoresSafeArea()
 
-            TextField(title, text: text)
-                .keyboardType(keyboard)
-                .textInputAutocapitalization(title == "Email" ? .never : .words)
-                .autocorrectionDisabled(title == "Email")
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .frame(height: 48)
-                .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color.white.opacity(0.05))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                        )
+            VStack(alignment: .leading, spacing: 18) {
+                Text(language.text(.appLanguage))
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.top, 8)
+
+                VStack(spacing: 0) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Button {
+                            storedLanguageCode = language.rawValue
+                            Haptics.medium()
+                            activePreferenceEditor = nil
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(language.title)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(.white)
+
+                                    Text(language.nativeTitle)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.45))
+                                }
+
+                                Spacer()
+
+                                if storedLanguageCode == language.rawValue {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundColor(MeTheme.accent)
+                                }
+                            }
+                            .padding(16)
+                        }
+                        .buttonStyle(.plain)
+
+                        if language != AppLanguage.allCases.last {
+                            Divider()
+                                .background(Color.white.opacity(0.06))
+                                .padding(.leading, 16)
+                        }
+                    }
+                }
+                .background(MeTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(Color.white.opacity(0.04), lineWidth: 1)
                 )
+
+                Spacer(minLength: 0)
+            }
+            .padding(20)
         }
-        .padding(16)
-        .background(MeTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(MeTheme.glassBorder, lineWidth: 1)
-        )
     }
 
     private func openEditor(_ field: Field) {
@@ -617,36 +639,16 @@ struct SettingsView: View {
         .padding(.vertical, 24)
     }
 
-    private var systemInfoCard: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.4))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("SYSTEM INFO")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.4))
-                    .tracking(1.5)
-
-                Text("Version 4.2.0  •  Last sync 2m ago  •  All systems operational.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.4))
-                    .lineSpacing(3)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(MeTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(MeTheme.glassBorder, lineWidth: 1)
-        )
+    private var selectedLanguage: AppLanguage {
+        AppLanguage(rawValue: storedLanguageCode) ?? .english
     }
 
     private var backgroundGradient: some View {
         PennyWarmBackground()
+    }
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: storedLanguageCode) ?? .english
     }
 }
 
@@ -654,21 +656,6 @@ struct SettingsView: View {
 struct SettingsProfile {
     var name: String
     var email: String
-    var twoFactorEnabled: Bool
-}
-
-struct SettingsPreferences {
-    var currency: String
-    var language: String
-    var theme: String
-    var timezone: String
-}
-
-struct SettingsNotifications {
-    var spending: String
-    var budgets: String
-    var reports: String
-    var tips: String
 }
 
 #Preview {
