@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 // MARK: - Theme
 private enum TransactionsTheme {
@@ -18,23 +19,48 @@ struct TransactionsView: View {
         case today
     }
 
+    enum TransactionFilter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case spending = "Spending"
+        case income = "Income"
+        case transfer = "Transfers"
+        case refund = "Refunds"
+        case recurring = "Recurring"
+
+        var id: String { rawValue }
+    }
+
     @Environment(\.dismiss) var dismiss
     private var data = TransactionData.shared
     private let scope: Scope
+    private let initialAccountId: UUID?
+    private let initialCategory: SpendingCategory?
+    private let initialFilter: TransactionFilter
     @State private var showAddTransaction = false
+    @State private var showImporter = false
     @State private var editingInfo: EditInfo? = nil
     @State private var selectedAccountId: UUID? = nil
+    @State private var selectedFilter: TransactionFilter = .all
+    @State private var selectedCategory: SpendingCategory? = nil
+    @State private var searchText = ""
+    @State private var importSummaryMessage: String?
 
     struct EditInfo: Identifiable {
         let id = UUID()
         let transaction: SpendingTransaction
-        let groupIndex: Int
         let groupTitle: String
-        let txIndex: Int
     }
 
-    init(scope: Scope = .all) {
+    init(
+        scope: Scope = .all,
+        initialAccountId: UUID? = nil,
+        initialCategory: SpendingCategory? = nil,
+        initialFilter: TransactionFilter = .all
+    ) {
         self.scope = scope
+        self.initialAccountId = initialAccountId
+        self.initialCategory = initialCategory
+        self.initialFilter = initialFilter
     }
 
     private var visibleGroups: [(groupIndex: Int, group: SpendingTransactionGroup)] {
@@ -50,7 +76,7 @@ struct TransactionsView: View {
 
         return scopedGroups.compactMap { index, group in
             let filteredTransactions = group.transactions.filter { transaction in
-                selectedAccountId.map { transaction.accountId == $0 } ?? true
+                matchesFilters(transaction)
             }
 
             guard !filteredTransactions.isEmpty else { return nil }
@@ -66,10 +92,19 @@ struct TransactionsView: View {
         }
     }
 
-    private var totalVisibleSpent: Double {
-        visibleGroups.reduce(0) { running, item in
-            running + item.group.transactions.reduce(0) { $0 + $1.amountValue }
+    private var visibleTransactions: [SpendingTransaction] {
+        visibleGroups.flatMap(\.group.transactions)
+    }
+
+    private var summaryAmount: Double {
+        visibleTransactions.reduce(0) { running, transaction in
+            running + transaction.kind.summaryAmount(transaction.amountValue)
         }
+    }
+
+    private var summaryAmountDisplay: String {
+        let sign = summaryAmount < 0 ? "-" : ""
+        return "\(sign)$\(String(format: "%.2f", abs(summaryAmount)))"
     }
 
     private var headerTitle: String {
@@ -80,15 +115,33 @@ struct TransactionsView: View {
     }
 
     private var spentSectionTitle: String {
-        switch scope {
-        case .all: return "SPENT THIS WEEK"
-        case .today: return "SPENT TODAY"
+        switch selectedFilter {
+        case .all:
+            return scope == .today ? "TODAY'S ACTIVITY" : "FILTERED ACTIVITY"
+        case .spending, .recurring:
+            return scope == .today ? "SPENT TODAY" : "SPENDING"
+        case .income:
+            return scope == .today ? "INCOME TODAY" : "INCOME"
+        case .transfer:
+            return scope == .today ? "TRANSFERS TODAY" : "TRANSFERS"
+        case .refund:
+            return scope == .today ? "REFUNDS TODAY" : "REFUNDS"
         }
+    }
+
+    private var availableCategories: [SpendingCategory] {
+        let categories = Set(data.allTransactions.compactMap { transaction in
+            let matchesAccount = selectedAccountId.map { transaction.accountId == $0 } ?? true
+            let matchesFilter = matchesTypeFilter(transaction)
+            let matchesSearch = matchesSearch(transaction)
+            return (matchesAccount && matchesFilter && matchesSearch) ? transaction.category : nil
+        })
+        return SpendingCategory.allCases.filter { categories.contains($0) }
     }
 
     private var recentDayTotals: [(label: String, total: Double)] {
         if scope == .today {
-            return [("TOD", totalVisibleSpent)]
+            return [("TOD", summaryAmount)]
         }
 
         let totals = visibleGroups.prefix(6).map { entry in
@@ -107,8 +160,16 @@ struct TransactionsView: View {
             VStack(spacing: 0) {
                 headerSection
                 spentSection
+                searchBar
+                    .padding(.bottom, 10)
+                transactionFilterBar
+                    .padding(.bottom, 8)
                 if !data.visibleAccounts.isEmpty {
                     accountFilterBar
+                        .padding(.bottom, 8)
+                }
+                if !availableCategories.isEmpty {
+                    categoryFilterBar
                         .padding(.bottom, 8)
                 }
 
@@ -133,9 +194,7 @@ struct TransactionsView: View {
                                         Button {
                                             editingInfo = EditInfo(
                                                 transaction: transaction,
-                                                groupIndex: groupIndex,
-                                                groupTitle: group.title,
-                                                txIndex: txIndex
+                                                groupTitle: group.title
                                             )
                                         } label: {
                                             Label("Edit", systemImage: "pencil")
@@ -174,14 +233,28 @@ struct TransactionsView: View {
         .sheet(item: $editingInfo) { info in
             EditTransactionView(
                 transaction: info.transaction,
-                originalGroupIndex: info.groupIndex,
-                originalGroupTitle: info.groupTitle,
-                originalTxIndex: info.txIndex
+                originalGroupTitle: info.groupTitle
             )
             .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
         }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.commaSeparatedText, .plainText],
+            allowsMultipleSelection: false
+        ) { result in
+            handleImport(result)
+        }
         .onAppear {
+            if selectedAccountId == nil {
+                selectedAccountId = initialAccountId
+            }
+            if selectedCategory == nil {
+                selectedCategory = initialCategory
+            }
+            if selectedFilter == .all {
+                selectedFilter = initialFilter
+            }
             data.syncRecurringTransactions()
         }
     }
@@ -242,6 +315,21 @@ struct TransactionsView: View {
                     )
                     .shadow(color: TransactionsTheme.accent.opacity(0.5), radius: 8)
             }
+
+            Button {
+                showImporter = true
+                Haptics.light()
+            } label: {
+                Circle()
+                    .fill(TransactionsTheme.surface)
+                    .frame(width: 40, height: 40)
+                    .overlay(Circle().stroke(TransactionsTheme.line, lineWidth: 1))
+                    .overlay(
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(TransactionsTheme.ink)
+                    )
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, 16)
@@ -256,13 +344,19 @@ struct TransactionsView: View {
                 .foregroundColor(TransactionsTheme.muted)
                 .tracking(2)
 
-            Text("$\(String(format: "%.2f", totalVisibleSpent))")
+            Text(summaryAmountDisplay)
                 .font(.system(size: 48, weight: .regular, design: .serif))
                 .foregroundColor(.white)
                 .tracking(-1)
 
+            if let importSummaryMessage {
+                Text(importSummaryMessage)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+
             HStack(alignment: .bottom, spacing: 8) {
-                let maxValue = max(recentDayTotals.map { $0.total }.max() ?? 1, 1)
+                let maxValue = max(recentDayTotals.map { abs($0.total) }.max() ?? 1, 1)
 
                 ForEach(Array(recentDayTotals.enumerated()), id: \.offset) { _, day in
                     VStack(spacing: 5) {
@@ -272,7 +366,7 @@ struct TransactionsView: View {
                             .overlay(alignment: .bottom) {
                                 RoundedRectangle(cornerRadius: 4)
                                     .fill(TransactionsTheme.accent)
-                                    .frame(height: max(4, 52 * CGFloat(day.total / maxValue)))
+                                    .frame(height: max(4, 52 * CGFloat(abs(day.total) / maxValue)))
                             }
 
                         Text(day.label)
@@ -287,6 +381,50 @@ struct TransactionsView: View {
         .padding(.bottom, 16)
     }
 
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.white.opacity(0.45))
+
+            TextField("Search merchants, categories, or accounts", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .foregroundColor(.white)
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.white.opacity(0.35))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(TransactionsTheme.surface)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(TransactionsTheme.line, lineWidth: 1))
+        )
+        .padding(.horizontal, 24)
+    }
+
+    private var transactionFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(TransactionFilter.allCases) { filter in
+                    accountFilterChip(title: filter.rawValue, isSelected: selectedFilter == filter) {
+                        selectedFilter = filter
+                        selectedCategory = nil
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
     private var accountFilterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -297,6 +435,23 @@ struct TransactionsView: View {
                 ForEach(data.visibleAccounts, id: \.id) { account in
                     accountFilterChip(title: account.name, isSelected: selectedAccountId == account.id) {
                         selectedAccountId = account.id
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private var categoryFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                accountFilterChip(title: "All Categories", isSelected: selectedCategory == nil) {
+                    selectedCategory = nil
+                }
+
+                ForEach(availableCategories, id: \.self) { category in
+                    accountFilterChip(title: category.rawValue, isSelected: selectedCategory == category) {
+                        selectedCategory = category
                     }
                 }
             }
@@ -343,6 +498,61 @@ struct TransactionsView: View {
         }
     }
 
+    private func matchesFilters(_ transaction: SpendingTransaction) -> Bool {
+        let matchesAccount = selectedAccountId.map { transaction.accountId == $0 } ?? true
+        let matchesCategory = selectedCategory.map { transaction.category == $0 } ?? true
+        return matchesAccount && matchesCategory && matchesTypeFilter(transaction) && matchesSearch(transaction)
+    }
+
+    private func handleImport(_ result: Result<[URL], Error>) {
+        guard case let .success(urls) = result, let url = urls.first else { return }
+
+        do {
+            _ = url.startAccessingSecurityScopedResource()
+            defer { url.stopAccessingSecurityScopedResource() }
+
+            let contents = try String(contentsOf: url, encoding: .utf8)
+            let summary = data.importCSVTransactions(from: contents, defaultAccountId: selectedAccountId)
+            importSummaryMessage = "Imported \(summary.importedCount) • Skipped duplicates \(summary.duplicateCount)"
+        } catch {
+            importSummaryMessage = "Import failed"
+        }
+    }
+
+    private func matchesTypeFilter(_ transaction: SpendingTransaction) -> Bool {
+        switch selectedFilter {
+        case .all:
+            return true
+        case .spending:
+            return transaction.kind == .spending
+        case .income:
+            return transaction.kind == .income
+        case .transfer:
+            return transaction.kind == .transfer
+        case .refund:
+            return transaction.kind == .refund
+        case .recurring:
+            return transaction.category == .subscriptions || transaction.isRecurringCandidate
+        }
+    }
+
+    private func matchesSearch(_ transaction: SpendingTransaction) -> Bool {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return true }
+
+        let haystacks = [
+            transaction.title,
+            transaction.subtitle,
+            transaction.merchantNormalized ?? "",
+            transaction.merchantRaw ?? "",
+            transaction.category.rawValue,
+            data.accountName(for: transaction.accountId) ?? "",
+            transaction.kind.rawValue
+        ]
+
+        return haystacks.contains { $0.lowercased().contains(query) }
+    }
+
     // MARK: - Row
     private func fullTransactionRow(_ transaction: SpendingTransaction) -> some View {
         let isSubscription = transaction.category == .subscriptions
@@ -381,7 +591,7 @@ struct TransactionsView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(transaction.amount)
                     .font(.system(size: 17, weight: .medium, design: .serif))
-                    .foregroundColor(transaction.isImpulse ? TransactionsTheme.accent : .white)
+                    .foregroundColor(transaction.isImpulse ? TransactionsTheme.accent : transaction.kind.signedAmountColor)
                     .tracking(-0.5)
 
                 if transaction.isImpulse {
@@ -415,33 +625,48 @@ struct TransactionsView: View {
 struct EditTransactionView: View {
     @Environment(\.dismiss) var dismiss
     let transaction: SpendingTransaction
-    let originalGroupIndex: Int
     let originalGroupTitle: String
-    let originalTxIndex: Int
     let originalGroupDate: Date
 
     private var data = TransactionData.shared
 
     @State private var amountString: String
     @State private var merchantName: String
+    @State private var selectedKind: TransactionKind
     @State private var selectedCategory: SpendingCategory
     @State private var selectedDate: Date
     @State private var selectedAccountId: UUID?
     @State private var isImpulse: Bool
+    @State private var isSplitTransaction: Bool
+    @State private var splitAllocations: [SplitTransactionAllocation]
     @State private var isListening = false
+    @State private var applyRuleToFuture = false
+    @State private var merchantRuleName = ""
+    @State private var merchantRulePattern = ""
 
-    init(transaction: SpendingTransaction, originalGroupIndex: Int, originalGroupTitle: String, originalTxIndex: Int) {
+    init(transaction: SpendingTransaction, originalGroupTitle: String) {
+        let existingSplitTransactions = transaction.splitGroupId.map { TransactionData.shared.splitTransactions(for: $0) } ?? []
+        let splitSeedTransactions = existingSplitTransactions.isEmpty ? [transaction] : existingSplitTransactions
         self.transaction = transaction
-        self.originalGroupIndex = originalGroupIndex
         self.originalGroupTitle = originalGroupTitle
-        self.originalTxIndex = originalTxIndex
         self.originalGroupDate = Self.resolveDate(fromGroupTitle: originalGroupTitle) ?? Date()
 
-        _merchantName = State(initialValue: transaction.title)
+        _merchantName = State(initialValue: transaction.merchantRaw ?? transaction.title)
         _amountString = State(initialValue: String(Int(transaction.amountValue * 100)))
+        _selectedKind = State(initialValue: transaction.kind)
         _selectedCategory = State(initialValue: transaction.category)
         _selectedAccountId = State(initialValue: transaction.accountId)
         _isImpulse = State(initialValue: transaction.isImpulse)
+        _isSplitTransaction = State(initialValue: transaction.isSplitChild || splitSeedTransactions.count > 1)
+        _splitAllocations = State(initialValue: splitSeedTransactions.map {
+            SplitTransactionAllocation(
+                category: $0.category,
+                amount: $0.amountValue,
+                label: $0.splitLabel ?? ""
+            )
+        })
+        _merchantRuleName = State(initialValue: transaction.merchantRaw ?? transaction.title)
+        _merchantRulePattern = State(initialValue: transaction.merchantNormalized ?? transaction.merchantRaw ?? transaction.title)
 
         _selectedDate = State(initialValue: self.originalGroupDate)
     }
@@ -453,6 +678,18 @@ struct EditTransactionView: View {
 
     private var amountDouble: Double {
         (Double(amountString) ?? 0) / 100
+    }
+
+    private var splitTotal: Double {
+        splitAllocations.reduce(0) { $0 + $1.amount }
+    }
+
+    private var splitDifference: Double {
+        amountDouble - splitTotal
+    }
+
+    private var headerTitle: String {
+        "EDIT \(selectedKind.editorTitle.uppercased())"
     }
 
     var body: some View {
@@ -495,7 +732,7 @@ struct EditTransactionView: View {
 
                     Spacer()
 
-                    Text("EDIT EXPENSE")
+                    Text(headerTitle)
                         .font(.system(size: 12, weight: .medium))
                         .tracking(2)
                         .foregroundColor(.white.opacity(0.5))
@@ -528,7 +765,7 @@ struct EditTransactionView: View {
 
                         Text(displayAmount)
                             .font(.system(size: 64, weight: .light, design: .serif))
-                            .foregroundColor(.white)
+                            .foregroundColor(selectedKind.signedAmountColor)
                             .minimumScaleFactor(0.5)
                     }
 
@@ -536,6 +773,10 @@ struct EditTransactionView: View {
                         .frame(height: 30)
                 }
                 .padding(.bottom, 20)
+
+                kindSelector
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -568,23 +809,25 @@ struct EditTransactionView: View {
 
                     Spacer()
 
-                    HStack(spacing: 8) {
-                        Text("Impulse")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white.opacity(0.5))
+                    if selectedKind.usesImpulseFlag {
+                        HStack(spacing: 8) {
+                            Text("Impulse")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white.opacity(0.5))
 
-                        Toggle("", isOn: $isImpulse)
-                            .labelsHidden()
-                            .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
-                            .scaleEffect(0.85)
+                            Toggle("", isOn: $isImpulse)
+                                .labelsHidden()
+                                .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
+                                .scaleEffect(0.85)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.white.opacity(0.06))
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        )
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.white.opacity(0.06))
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
-                    )
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
@@ -616,13 +859,21 @@ struct EditTransactionView: View {
                     .padding(.bottom, 20)
                 }
 
+                merchantRuleSection
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+
+                splitSection
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+
                 KeypadView { key in handleKey(key) }
                     .padding(.horizontal, 24)
 
                 Spacer()
 
                 Button(action: saveExpense) {
-                    Text("Save Changes")
+                    Text(selectedKind.saveTitle)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -676,91 +927,205 @@ struct EditTransactionView: View {
     private func saveExpense() {
         Haptics.medium()
 
-        // Capture original group title BEFORE we mutate groups,
-        // so we can detect "same group" and preserve position.
-        let newDayLabel: String
-        if Calendar.current.isDate(selectedDate, inSameDayAs: originalGroupDate) {
-            newDayLabel = originalGroupTitle
-        } else if Calendar.current.isDateInToday(selectedDate) {
-            newDayLabel = "Today"
-        } else if Calendar.current.isDateInYesterday(selectedDate) {
-            newDayLabel = "Yesterday"
-        } else {
-            let fmt = DateFormatter()
-            fmt.dateFormat = "EEEE, MMM d"
-            newDayLabel = fmt.string(from: selectedDate)
-        }
-
-        let updated = SpendingTransaction(
+        let rawTitle = merchantName.isEmpty ? selectedCategory.rawValue : merchantName
+        let updated = data.normalizeAndApplyRules(to: SpendingTransaction(
             id: transaction.id,
             icon: selectedCategory.icon,
-            title: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
+            title: rawTitle,
             subtitle: selectedCategory.rawValue,
             time: transaction.time,
-            amount: "-$\(String(format: "%.2f", amountDouble))",
-            isImpulse: isImpulse,
+            amount: selectedKind.signedAmountString(for: amountDouble),
+            isImpulse: selectedKind.usesImpulseFlag ? isImpulse : false,
             iconColor: selectedCategory.color,
             bgColor: selectedCategory.color.opacity(0.1),
             borderColor: selectedCategory.color.opacity(0.2),
             category: selectedCategory,
             accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
-            kind: transaction.kind,
-            merchantRaw: merchantName.isEmpty ? transaction.merchantRaw : merchantName,
-            merchantNormalized: merchantName.isEmpty ? transaction.merchantNormalized : data.normalizeMerchant(merchantName),
+            kind: selectedKind,
+            merchantRaw: rawTitle,
+            merchantNormalized: data.normalizeMerchant(rawTitle),
             notes: transaction.notes,
             tags: transaction.tags,
             isExcludedFromBudget: transaction.isExcludedFromBudget,
             isRecurringCandidate: transaction.isRecurringCandidate
-        )
+        ))
 
-        // Remove from original group
-        var originalTxns = data.groups[originalGroupIndex].transactions
-        originalTxns.remove(at: originalTxIndex)
-        if originalTxns.isEmpty {
-            data.groups.remove(at: originalGroupIndex)
-        } else {
-            data.groups[originalGroupIndex] = SpendingTransactionGroup(
-                title: data.groups[originalGroupIndex].title,
-                transactions: originalTxns
+        if applyRuleToFuture {
+            data.upsertMerchantRule(
+                matchPattern: merchantRulePattern.isEmpty ? rawTitle : merchantRulePattern,
+                categoryOverride: selectedCategory,
+                merchantDisplayName: merchantRuleName.isEmpty ? rawTitle : merchantRuleName,
+                recurringHint: selectedKind == .spending && selectedCategory == .subscriptions
             )
         }
 
-        // Insert into correct group (FIXED: preserve position if same group/date)
-        if let existingIndex = data.groups.firstIndex(where: { $0.title == newDayLabel }) {
-            var txns = data.groups[existingIndex].transactions
-
-            // If we're staying in the same group (date unchanged), put it back where it was.
-            // Otherwise (moving to a different day), insert at top.
-            let insertAt: Int
-            if newDayLabel == originalGroupTitle {
-                insertAt = min(originalTxIndex, txns.count)
-            } else {
-                insertAt = 0
-            }
-
-            txns.insert(updated, at: insertAt)
-            data.groups[existingIndex] = SpendingTransactionGroup(
-                title: data.groups[existingIndex].title,
-                transactions: txns
+        if isSplitTransaction {
+            let validAllocations = normalizedSplitAllocations()
+            guard !validAllocations.isEmpty else { return }
+            data.replaceTransactionWithSplit(
+                original: transaction,
+                originalGroupTitle: originalGroupTitle,
+                originalGroupDate: originalGroupDate,
+                newDate: selectedDate,
+                merchantName: rawTitle,
+                kind: selectedKind,
+                accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
+                isImpulse: isImpulse,
+                allocations: validAllocations,
+                notes: transaction.notes
             )
         } else {
-            let labelFormatter = DateFormatter()
-            labelFormatter.dateFormat = "EEEE, MMM d"
-            let insertIndex = data.groups.firstIndex(where: { group in
-                guard group.title != "Today" && group.title != "Yesterday" else { return false }
-                if let groupDate = labelFormatter.date(from: group.title) {
-                    return groupDate < selectedDate
-                }
-                return false
-            }) ?? data.groups.endIndex
-
-            data.groups.insert(
-                SpendingTransactionGroup(title: newDayLabel, transactions: [updated]),
-                at: insertIndex
+            data.updateTransaction(
+                updated,
+                originalTransactionId: transaction.id,
+                originalGroupTitle: originalGroupTitle,
+                originalGroupDate: originalGroupDate,
+                newDate: selectedDate
             )
         }
 
         dismiss()
+    }
+
+    private var kindSelector: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(TransactionKind.allCases, id: \.self) { kind in
+                    Button {
+                        selectedKind = kind
+                        if !kind.usesImpulseFlag {
+                            isImpulse = false
+                        }
+                        Haptics.light()
+                    } label: {
+                        Text(kind.editorTitle)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(selectedKind == kind ? .white : .white.opacity(0.6))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(
+                                Capsule()
+                                    .fill(selectedKind == kind ? kind.signedAmountColor.opacity(0.95) : Color.white.opacity(0.06))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(selectedKind == kind ? kind.signedAmountColor.opacity(0.25) : Color.white.opacity(0.06), lineWidth: 1)
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var merchantRuleSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $applyRuleToFuture) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Apply to future transactions")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text("Rename this merchant and keep this category for matching transactions.")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.white.opacity(0.45))
+                }
+            }
+            .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
+
+            if applyRuleToFuture {
+                VStack(spacing: 10) {
+                    ruleField(title: "Merchant Name", text: $merchantRuleName, placeholder: merchantName.isEmpty ? selectedCategory.rawValue : merchantName)
+                    ruleField(title: "Match Text", text: $merchantRulePattern, placeholder: merchantName.isEmpty ? selectedCategory.rawValue : merchantName)
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.05))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
+        )
+    }
+
+    private var splitSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $isSplitTransaction) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Split transaction")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text("Break this transaction into category parts.")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.white.opacity(0.45))
+                }
+            }
+            .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
+
+            if isSplitTransaction {
+                VStack(spacing: 10) {
+                    ForEach($splitAllocations) { $allocation in
+                        SplitAllocationEditor(allocation: $allocation)
+                    }
+
+                    HStack {
+                        Button {
+                            splitAllocations.append(
+                                SplitTransactionAllocation(category: selectedCategory, amount: 0, label: "")
+                            )
+                        } label: {
+                            Label("Add Split", systemImage: "plus")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(Color(red: 1.0, green: 0.55, blue: 0.36))
+                        }
+
+                        Spacer()
+
+                        Text("Left: $\(String(format: "%.2f", max(splitDifference, 0)))")
+                            .font(.system(size: 12, weight: .medium, design: .serif))
+                            .foregroundColor(abs(splitDifference) < 0.01 ? Color(red: 0.29, green: 0.87, blue: 0.50) : .white.opacity(0.55))
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.05))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
+        )
+    }
+
+    private func normalizedSplitAllocations() -> [SplitTransactionAllocation] {
+        let nonZero = splitAllocations.filter { $0.amount > 0 }
+        guard !nonZero.isEmpty else { return [] }
+
+        var result = nonZero
+        let delta = amountDouble - result.reduce(0) { $0 + $1.amount }
+        if abs(delta) >= 0.01, let lastIndex = result.indices.last {
+            result[lastIndex].amount += delta
+        }
+        return result.filter { $0.amount > 0 }
+    }
+
+    private func ruleField(title: String, text: Binding<String>, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.5)
+                .foregroundColor(.white.opacity(0.4))
+
+            TextField(placeholder, text: text)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                )
+        }
     }
 
     private static func resolveDate(fromGroupTitle title: String) -> Date? {

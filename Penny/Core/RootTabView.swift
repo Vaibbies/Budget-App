@@ -4,6 +4,11 @@ struct RootTabView: View {
     @State private var selectedTab: Int = 1
     @State private var showMindfulPause = false
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
+    @AppStorage("penny.notifications.spendingAlerts") private var spendingAlerts = true
+    @AppStorage("penny.notifications.budgetWarnings") private var budgetWarnings = true
+    @AppStorage("penny.notifications.billReminders") private var billReminders = true
+    @AppStorage("penny.notifications.weeklyDigest") private var weeklyDigest = false
+    @AppStorage("penny.notifications.savingTips") private var savingTips = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(TransactionData.self) private var data
 
@@ -59,16 +64,58 @@ struct RootTabView: View {
         }
         .onAppear {
             data.syncRecurringTransactions()
+            Task {
+                await refreshLocalNotifications()
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 data.syncRecurringTransactions()
+                Task {
+                    await refreshLocalNotifications()
+                }
+            }
+        }
+        .onChange(of: billReminders) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
+        .onChange(of: spendingAlerts) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
+        .onChange(of: budgetWarnings) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
+        .onChange(of: weeklyDigest) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
+        .onChange(of: savingTips) { _, _ in
+            Task {
+                await refreshLocalNotifications()
             }
         }
     }
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .english
+    }
+
+    private func refreshLocalNotifications() async {
+        await LocalNotificationManager.shared.refreshNotifications(
+            using: data,
+            spendingAlertsEnabled: spendingAlerts,
+            budgetWarningsEnabled: budgetWarnings,
+            billRemindersEnabled: billReminders,
+            weeklyDigestEnabled: weeklyDigest,
+            savingTipsEnabled: savingTips
+        )
     }
 }
 

@@ -49,6 +49,69 @@ enum TransactionKind: String, CaseIterable, Codable {
     case income = "Income"
     case transfer = "Transfer"
     case refund = "Refund"
+
+    var editorTitle: String {
+        switch self {
+        case .spending: return "Expense"
+        case .income: return "Income"
+        case .transfer: return "Transfer"
+        case .refund: return "Refund"
+        }
+    }
+
+    var actionTitle: String {
+        switch self {
+        case .spending: return "Log Expense"
+        case .income: return "Log Income"
+        case .transfer: return "Log Transfer"
+        case .refund: return "Log Refund"
+        }
+    }
+
+    var saveTitle: String {
+        switch self {
+        case .spending: return "Save Expense"
+        case .income: return "Save Income"
+        case .transfer: return "Save Transfer"
+        case .refund: return "Save Refund"
+        }
+    }
+
+    var signedAmountColor: Color {
+        switch self {
+        case .spending:
+            return .white
+        case .income:
+            return Color(red: 0.29, green: 0.87, blue: 0.50)
+        case .transfer:
+            return Color(red: 0.38, green: 0.65, blue: 0.98)
+        case .refund:
+            return Color(red: 0.98, green: 0.85, blue: 0.35)
+        }
+    }
+
+    var usesImpulseFlag: Bool {
+        self == .spending
+    }
+
+    func signedAmountString(for amount: Double) -> String {
+        let formatted = String(format: "%.2f", abs(amount))
+        switch self {
+        case .spending, .transfer:
+            return "-$\(formatted)"
+        case .income, .refund:
+            return "+$\(formatted)"
+        }
+    }
+
+    func summaryAmount(_ amount: Double) -> Double {
+        switch self {
+        case .spending, .transfer:
+            return -abs(amount)
+        case .income, .refund:
+            return abs(amount)
+        }
+    }
 }
 
 enum AccountType: String, CaseIterable, Codable {
@@ -63,6 +126,46 @@ enum AccountType: String, CaseIterable, Codable {
 enum BudgetMode: String, CaseIterable, Codable {
     case daily = "Daily"
     case monthly = "Monthly"
+}
+
+enum RecurringStatus: String, CaseIterable, Codable, Identifiable {
+    case active = "Active"
+    case paused = "Paused"
+    case archived = "Archived"
+
+    var id: String { rawValue }
+}
+
+struct ManualForecastItem: Identifiable, Codable {
+    enum Kind: String, CaseIterable, Codable, Identifiable {
+        case income = "Income"
+        case bill = "Bill"
+
+        var id: String { rawValue }
+    }
+
+    let id: UUID
+    var title: String
+    var amount: Double
+    var date: Date
+    var kind: Kind
+    var note: String?
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        amount: Double,
+        date: Date,
+        kind: Kind,
+        note: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.amount = amount
+        self.date = date
+        self.kind = kind
+        self.note = note
+    }
 }
 
 struct Account: Identifiable, Codable {
@@ -211,6 +314,56 @@ struct MonthlyComparison {
     }
 }
 
+struct SplitTransactionAllocation: Identifiable, Codable, Equatable {
+    let id: UUID
+    var category: SpendingCategory
+    var amount: Double
+    var label: String
+
+    init(
+        id: UUID = UUID(),
+        category: SpendingCategory,
+        amount: Double,
+        label: String = ""
+    ) {
+        self.id = id
+        self.category = category
+        self.amount = amount
+        self.label = label
+    }
+}
+
+struct TransactionImportSummary {
+    let importedCount: Int
+    let duplicateCount: Int
+}
+
+struct CashFlowForecastEvent: Identifiable {
+    enum EventKind {
+        case income
+        case bill
+    }
+
+    let id: UUID
+    let title: String
+    let date: Date
+    let amount: Double
+    let kind: EventKind
+    let subtitle: String
+}
+
+struct CashFlowForecast {
+    let startingCash: Double
+    let events: [CashFlowForecastEvent]
+    let projectedEndOfMonthCash: Double
+    let expectedIncome: Double
+    let expectedBills: Double
+
+    var next30DayNet: Double {
+        expectedIncome - expectedBills
+    }
+}
+
 // MARK: - Transaction Model
 struct SpendingTransaction: Identifiable, Codable {
     let id: UUID
@@ -232,6 +385,8 @@ struct SpendingTransaction: Identifiable, Codable {
     let tags: [String]
     let isExcludedFromBudget: Bool
     let isRecurringCandidate: Bool
+    let splitGroupId: UUID?
+    let splitLabel: String?
 
     init(
         id: UUID = UUID(),
@@ -246,7 +401,9 @@ struct SpendingTransaction: Identifiable, Codable {
         notes: String? = nil,
         tags: [String] = [],
         isExcludedFromBudget: Bool = false,
-        isRecurringCandidate: Bool = false
+        isRecurringCandidate: Bool = false,
+        splitGroupId: UUID? = nil,
+        splitLabel: String? = nil
     ) {
         self.id = id
         self.icon = icon
@@ -267,6 +424,8 @@ struct SpendingTransaction: Identifiable, Codable {
         self.tags = tags
         self.isExcludedFromBudget = isExcludedFromBudget
         self.isRecurringCandidate = isRecurringCandidate
+        self.splitGroupId = splitGroupId
+        self.splitLabel = splitLabel
     }
 
     enum CodingKeys: String, CodingKey {
@@ -274,6 +433,7 @@ struct SpendingTransaction: Identifiable, Codable {
         case iconColorHex, bgColorHex, borderColorHex, category
         case accountId, kind, merchantRaw, merchantNormalized, notes, tags
         case isExcludedFromBudget, isRecurringCandidate
+        case splitGroupId, splitLabel
     }
 
     init(from decoder: Decoder) throws {
@@ -297,6 +457,8 @@ struct SpendingTransaction: Identifiable, Codable {
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         isExcludedFromBudget = try container.decodeIfPresent(Bool.self, forKey: .isExcludedFromBudget) ?? false
         isRecurringCandidate = try container.decodeIfPresent(Bool.self, forKey: .isRecurringCandidate) ?? false
+        splitGroupId = try container.decodeIfPresent(UUID.self, forKey: .splitGroupId)
+        splitLabel = try container.decodeIfPresent(String.self, forKey: .splitLabel)
     }
 
     var iconColor: Color { Color(hex: iconColorHex) ?? .orange }
@@ -317,6 +479,10 @@ struct SpendingTransaction: Identifiable, Codable {
             .replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: ",", with: "")
         return Double(cleaned) ?? 0
+    }
+
+    var isSplitChild: Bool {
+        splitGroupId != nil
     }
 }
 
@@ -350,6 +516,7 @@ struct RecurringSubscription: Identifiable, Codable {
     let expectedAmountMin: Double?
     let expectedAmountMax: Double?
     let linkedTransactionIds: [UUID]
+    let status: RecurringStatus
 
     init(
         id: UUID = UUID(),
@@ -366,7 +533,8 @@ struct RecurringSubscription: Identifiable, Codable {
         merchantMatchPattern: String? = nil,
         expectedAmountMin: Double? = nil,
         expectedAmountMax: Double? = nil,
-        linkedTransactionIds: [UUID] = []
+        linkedTransactionIds: [UUID] = [],
+        status: RecurringStatus = .active
     ) {
         self.id = id
         self.name = name
@@ -383,12 +551,13 @@ struct RecurringSubscription: Identifiable, Codable {
         self.expectedAmountMin = expectedAmountMin
         self.expectedAmountMax = expectedAmountMax
         self.linkedTransactionIds = linkedTransactionIds
+        self.status = status
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, plan, price, iconName, iconColorHex, bgColorHex
         case nextBilling, frequencyDays, frequencyKey, nextBillingEpoch
-        case merchantMatchPattern, expectedAmountMin, expectedAmountMax, linkedTransactionIds
+        case merchantMatchPattern, expectedAmountMin, expectedAmountMax, linkedTransactionIds, status
     }
 
     init(from decoder: Decoder) throws {
@@ -408,6 +577,7 @@ struct RecurringSubscription: Identifiable, Codable {
         expectedAmountMin = try container.decodeIfPresent(Double.self, forKey: .expectedAmountMin)
         expectedAmountMax = try container.decodeIfPresent(Double.self, forKey: .expectedAmountMax)
         linkedTransactionIds = try container.decodeIfPresent([UUID].self, forKey: .linkedTransactionIds) ?? []
+        status = try container.decodeIfPresent(RecurringStatus.self, forKey: .status) ?? .active
     }
 
     var iconColor: Color { Color(hex: iconColorHex) ?? .white }
@@ -439,6 +609,12 @@ extension Color {
     }
 }
 
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 // MARK: - Shared Data
 @Observable
 class TransactionData {
@@ -451,6 +627,8 @@ class TransactionData {
     private let legacyMonthlyBudgetKey = "penny_monthly_budget"
     private let subscriptionsKey = "penny_recurring_subscriptions"
     private let accountsKey = "penny_accounts"
+    private let merchantRulesKey = "penny_merchant_rules"
+    private let manualForecastItemsKey = "penny_manual_forecast_items"
     private let manualV1ResetKey = "penny_manual_v1_reset_complete"
     private let defaultAccountId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
     private var isNormalizingGroups = false
@@ -460,7 +638,9 @@ class TransactionData {
         didSet { saveAccounts() }
     }
     var budgetCategories: [BudgetCategory]
-    var merchantRules: [MerchantRule]
+    var merchantRules: [MerchantRule] {
+        didSet { saveMerchantRules() }
+    }
     var savingsGoals: [SavingsGoal]
 
     var groups: [SpendingTransactionGroup] {
@@ -479,6 +659,10 @@ class TransactionData {
 
     var subscriptions: [RecurringSubscription] {
         didSet { saveSubscriptions() }
+    }
+
+    var manualForecastItems: [ManualForecastItem] {
+        didSet { saveManualForecastItems() }
     }
 
     var budgetMode: BudgetMode {
@@ -526,7 +710,12 @@ class TransactionData {
             self.accounts = []
         }
         self.budgetCategories = TransactionData.sampleBudgetCategories
-        self.merchantRules = TransactionData.sampleMerchantRules
+        if let data = defaults.data(forKey: merchantRulesKey),
+           let decoded = try? JSONDecoder().decode([MerchantRule].self, from: data) {
+            self.merchantRules = decoded
+        } else {
+            self.merchantRules = TransactionData.sampleMerchantRules
+        }
         self.savingsGoals = TransactionData.sampleSavingsGoals
 
         let loadedGroups: [SpendingTransactionGroup]
@@ -546,6 +735,13 @@ class TransactionData {
             self.subscriptions = decoded
         } else {
             self.subscriptions = [] // empty instead of sampleSubscriptions
+        }
+
+        if let data = defaults.data(forKey: manualForecastItemsKey),
+           let decoded = try? JSONDecoder().decode([ManualForecastItem].self, from: data) {
+            self.manualForecastItems = decoded.sorted { $0.date < $1.date }
+        } else {
+            self.manualForecastItems = []
         }
 
         groups = groups.map { group in
@@ -611,6 +807,18 @@ class TransactionData {
         }
     }
 
+    private func saveManualForecastItems() {
+        if let encoded = try? JSONEncoder().encode(manualForecastItems.sorted { $0.date < $1.date }) {
+            UserDefaults.standard.set(encoded, forKey: manualForecastItemsKey)
+        }
+    }
+
+    private func saveMerchantRules() {
+        if let encoded = try? JSONEncoder().encode(merchantRules) {
+            UserDefaults.standard.set(encoded, forKey: merchantRulesKey)
+        }
+    }
+
     func normalizeMerchant(_ merchant: String) -> String {
         merchant
             .uppercased()
@@ -649,7 +857,9 @@ class TransactionData {
             notes: transaction.notes,
             tags: transaction.tags,
             isExcludedFromBudget: transaction.isExcludedFromBudget,
-            isRecurringCandidate: transaction.isRecurringCandidate || matchedRule.recurringHint
+            isRecurringCandidate: transaction.isRecurringCandidate || matchedRule.recurringHint,
+            splitGroupId: transaction.splitGroupId,
+            splitLabel: transaction.splitLabel
         )
     }
 
@@ -674,9 +884,51 @@ class TransactionData {
             notes: transaction.notes,
             tags: transaction.tags,
             isExcludedFromBudget: transaction.isExcludedFromBudget,
-            isRecurringCandidate: transaction.isRecurringCandidate || detectRecurringCandidate(for: normalizedMerchant)
+            isRecurringCandidate: transaction.isRecurringCandidate || detectRecurringCandidate(for: normalizedMerchant),
+            splitGroupId: transaction.splitGroupId,
+            splitLabel: transaction.splitLabel
         )
         return applyMerchantRules(to: normalized)
+    }
+
+    func upsertMerchantRule(
+        matchPattern: String,
+        categoryOverride: SpendingCategory?,
+        merchantDisplayName: String?,
+        recurringHint: Bool
+    ) {
+        let normalizedPattern = matchPattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPattern.isEmpty else { return }
+
+        let updatedRule = MerchantRule(
+            id: merchantRules.first(where: {
+                $0.matchPattern.caseInsensitiveCompare(normalizedPattern) == .orderedSame
+            })?.id ?? UUID(),
+            matchPattern: normalizedPattern,
+            categoryOverride: categoryOverride,
+            merchantDisplayName: merchantDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            recurringHint: recurringHint
+        )
+
+        if let index = merchantRules.firstIndex(where: {
+            $0.matchPattern.caseInsensitiveCompare(normalizedPattern) == .orderedSame
+        }) {
+            merchantRules[index] = updatedRule
+        } else {
+            merchantRules.append(updatedRule)
+        }
+
+        reapplyMerchantRules()
+    }
+
+    func reapplyMerchantRules() {
+        groups = groups.map { group in
+            SpendingTransactionGroup(
+                id: group.id,
+                title: group.title,
+                transactions: group.transactions.map { normalizeAndApplyRules(to: $0) }
+            )
+        }
     }
 
     func detectRecurringCandidate(for merchant: String) -> Bool {
@@ -865,6 +1117,367 @@ class TransactionData {
         return false
     }
 
+    @discardableResult
+    func removeSplitGroup(id: UUID) -> Int {
+        var removedCount = 0
+        for groupIndex in groups.indices.reversed() {
+            let remaining = groups[groupIndex].transactions.filter { $0.splitGroupId != id }
+            removedCount += groups[groupIndex].transactions.count - remaining.count
+
+            if remaining.isEmpty {
+                groups.remove(at: groupIndex)
+            } else if remaining.count != groups[groupIndex].transactions.count {
+                groups[groupIndex] = SpendingTransactionGroup(
+                    id: groups[groupIndex].id,
+                    title: groups[groupIndex].title,
+                    transactions: remaining
+                )
+            }
+        }
+        return removedCount
+    }
+
+    func addTransaction(_ transaction: SpendingTransaction, on date: Date) {
+        let dayLabel = Self.dayLabel(for: date)
+
+        if let index = groups.firstIndex(where: { $0.title == dayLabel }) {
+            var updated = groups[index].transactions
+            updated.insert(normalizeAndApplyRules(to: transaction), at: 0)
+            groups[index] = SpendingTransactionGroup(
+                id: groups[index].id,
+                title: groups[index].title,
+                transactions: updated
+            )
+            return
+        }
+
+        let insertIndex = groups.firstIndex(where: { group in
+            guard group.title != "Today" && group.title != "Yesterday" else { return false }
+            if let groupDate = Self.resolvedDate(forGroupTitle: group.title, now: date) {
+                return groupDate < date
+            }
+            return false
+        }) ?? groups.endIndex
+
+        groups.insert(
+            SpendingTransactionGroup(
+                title: dayLabel,
+                transactions: [normalizeAndApplyRules(to: transaction)]
+            ),
+            at: insertIndex
+        )
+    }
+
+    func updateTransaction(
+        _ transaction: SpendingTransaction,
+        originalTransactionId: UUID,
+        originalGroupTitle: String,
+        originalGroupDate: Date,
+        newDate: Date
+    ) {
+        let newDayLabel: String
+        if Calendar.current.isDate(newDate, inSameDayAs: originalGroupDate) {
+            newDayLabel = originalGroupTitle
+        } else {
+            newDayLabel = Self.dayLabel(for: newDate)
+        }
+
+        let originalGroupIndex = groups.firstIndex(where: { $0.title == originalGroupTitle })
+        let originalInsertIndex = originalGroupIndex.flatMap { groupIndex in
+            groups[groupIndex].transactions.firstIndex(where: { $0.id == originalTransactionId })
+        } ?? 0
+
+        _ = removeTransaction(id: originalTransactionId)
+
+        let normalized = normalizeAndApplyRules(to: transaction)
+        if let existingIndex = groups.firstIndex(where: { $0.title == newDayLabel }) {
+            var txns = groups[existingIndex].transactions
+            let insertAt = newDayLabel == originalGroupTitle ? min(originalInsertIndex, txns.count) : 0
+            txns.insert(normalized, at: insertAt)
+            groups[existingIndex] = SpendingTransactionGroup(
+                id: groups[existingIndex].id,
+                title: groups[existingIndex].title,
+                transactions: txns
+            )
+        } else {
+            let insertIndex = groups.firstIndex(where: { group in
+                guard group.title != "Today" && group.title != "Yesterday" else { return false }
+                if let groupDate = Self.resolvedDate(forGroupTitle: group.title, now: newDate) {
+                    return groupDate < newDate
+                }
+                return false
+            }) ?? groups.endIndex
+
+            groups.insert(
+                SpendingTransactionGroup(title: newDayLabel, transactions: [normalized]),
+                at: insertIndex
+            )
+        }
+    }
+
+    func replaceTransactionWithSplit(
+        original transaction: SpendingTransaction,
+        originalGroupTitle: String,
+        originalGroupDate: Date,
+        newDate: Date,
+        merchantName: String,
+        kind: TransactionKind,
+        accountId: UUID?,
+        isImpulse: Bool,
+        allocations: [SplitTransactionAllocation],
+        notes: String? = nil
+    ) {
+        let rawTitle = merchantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? transaction.title
+            : merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let splitGroupId = transaction.splitGroupId ?? UUID()
+
+        if let splitGroupId = transaction.splitGroupId {
+            _ = removeSplitGroup(id: splitGroupId)
+        } else {
+            _ = removeTransaction(id: transaction.id)
+        }
+
+        for allocation in allocations where allocation.amount > 0 {
+            let splitTitle = allocation.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = splitTitle.isEmpty ? rawTitle : "\(rawTitle) • \(splitTitle)"
+
+            let splitTransaction = normalizeAndApplyRules(to: SpendingTransaction(
+                icon: allocation.category.icon,
+                title: title,
+                subtitle: allocation.category.rawValue,
+                time: transaction.time,
+                amount: kind.signedAmountString(for: allocation.amount),
+                isImpulse: kind.usesImpulseFlag ? isImpulse : false,
+                iconColor: allocation.category.color,
+                bgColor: allocation.category.color.opacity(0.1),
+                borderColor: allocation.category.color.opacity(0.2),
+                category: allocation.category,
+                accountId: accountId ?? defaultSpendingAccount?.id,
+                kind: kind,
+                merchantRaw: rawTitle,
+                merchantNormalized: normalizeMerchant(rawTitle),
+                notes: notes,
+                tags: Array(Set(transaction.tags + ["split"])).sorted(),
+                isExcludedFromBudget: transaction.isExcludedFromBudget,
+                isRecurringCandidate: transaction.isRecurringCandidate,
+                splitGroupId: splitGroupId,
+                splitLabel: allocation.label.nilIfEmpty
+            ))
+
+            addTransaction(splitTransaction, on: newDate)
+        }
+    }
+
+    func addSplitTransactions(
+        merchantName: String,
+        kind: TransactionKind,
+        accountId: UUID?,
+        isImpulse: Bool,
+        date: Date,
+        time: String,
+        allocations: [SplitTransactionAllocation],
+        notes: String? = nil
+    ) {
+        let rawTitle = merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let splitGroupId = UUID()
+
+        for allocation in allocations where allocation.amount > 0 {
+            let splitTitle = allocation.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = splitTitle.isEmpty ? rawTitle : "\(rawTitle) • \(splitTitle)"
+
+            let splitTransaction = normalizeAndApplyRules(to: SpendingTransaction(
+                icon: allocation.category.icon,
+                title: title,
+                subtitle: allocation.category.rawValue,
+                time: time,
+                amount: kind.signedAmountString(for: allocation.amount),
+                isImpulse: kind.usesImpulseFlag ? isImpulse : false,
+                iconColor: allocation.category.color,
+                bgColor: allocation.category.color.opacity(0.1),
+                borderColor: allocation.category.color.opacity(0.2),
+                category: allocation.category,
+                accountId: accountId ?? defaultSpendingAccount?.id,
+                kind: kind,
+                merchantRaw: rawTitle,
+                merchantNormalized: normalizeMerchant(rawTitle),
+                notes: notes,
+                tags: ["split"],
+                splitGroupId: splitGroupId,
+                splitLabel: allocation.label.nilIfEmpty
+            ))
+
+            addTransaction(splitTransaction, on: date)
+        }
+    }
+
+    func splitTransactions(for splitGroupId: UUID) -> [SpendingTransaction] {
+        allTransactions.filter { $0.splitGroupId == splitGroupId }
+    }
+
+    func isDuplicateTransaction(
+        date: Date,
+        merchant: String,
+        signedAmount: Double,
+        accountId: UUID?
+    ) -> Bool {
+        let normalizedMerchant = normalizeMerchant(merchant)
+        let targetDay = Calendar.current.startOfDay(for: date)
+
+        return allTransactions.contains { transaction in
+            let sameAccount = transaction.accountId == accountId
+            let sameMerchant = (transaction.merchantNormalized ?? normalizeMerchant(transaction.title)) == normalizedMerchant
+            let sameAmount = abs(transaction.amountSignedValue - signedAmount) < 0.01
+            let sameDay = Self.resolvedDate(forGroupTitle: groupTitle(for: transaction.id), now: date)
+                .map { Calendar.current.isDate(Calendar.current.startOfDay(for: $0), inSameDayAs: targetDay) } ?? false
+
+            return sameAccount && sameMerchant && sameAmount && sameDay
+        }
+    }
+
+    func importCSVTransactions(from csv: String, defaultAccountId: UUID? = nil) -> TransactionImportSummary {
+        let rows = csv
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard rows.count > 1 else {
+            return TransactionImportSummary(importedCount: 0, duplicateCount: 0)
+        }
+
+        let headers = parseCSVRow(rows[0]).map { $0.lowercased() }
+        var importedCount = 0
+        var duplicateCount = 0
+
+        for row in rows.dropFirst() {
+            let values = parseCSVRow(row)
+            guard values.count == headers.count else { continue }
+            let record = Dictionary(uniqueKeysWithValues: zip(headers, values))
+
+            guard
+                let dateString = record["date"] ?? record["transaction date"] ?? record["posted date"],
+                let merchant = record["merchant"] ?? record["description"] ?? record["name"],
+                let amountString = record["amount"]
+            else {
+                continue
+            }
+
+            guard let parsedDate = parseImportDate(dateString) else { continue }
+            let cleanedAmount = amountString
+                .replacingOccurrences(of: "$", with: "")
+                .replacingOccurrences(of: ",", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let rawAmount = Double(cleanedAmount) else { continue }
+
+            let kind = parseImportKind(record["type"], amount: rawAmount)
+            let absoluteAmount = abs(rawAmount)
+            let signedAmount = kind.summaryAmount(absoluteAmount)
+            let normalizedMerchant = normalizeMerchant(merchant)
+            let category = parseImportCategory(record["category"])
+            let accountId = accountIdForImportedRecord(record["account"], defaultAccountId: defaultAccountId)
+
+            if isDuplicateTransaction(
+                date: parsedDate,
+                merchant: normalizedMerchant,
+                signedAmount: signedAmount,
+                accountId: accountId
+            ) {
+                duplicateCount += 1
+                continue
+            }
+
+            let timeFormatter = DateFormatter()
+            timeFormatter.dateFormat = "h:mm a"
+            let transaction = normalizeAndApplyRules(to: SpendingTransaction(
+                icon: category.icon,
+                title: merchant,
+                subtitle: category.rawValue,
+                time: timeFormatter.string(from: parsedDate),
+                amount: kind.signedAmountString(for: absoluteAmount),
+                isImpulse: false,
+                iconColor: category.color,
+                bgColor: category.color.opacity(0.1),
+                borderColor: category.color.opacity(0.2),
+                category: category,
+                accountId: accountId,
+                kind: kind,
+                merchantRaw: merchant,
+                merchantNormalized: normalizedMerchant,
+                tags: ["imported"]
+            ))
+
+            addTransaction(transaction, on: parsedDate)
+            importedCount += 1
+        }
+
+        return TransactionImportSummary(importedCount: importedCount, duplicateCount: duplicateCount)
+    }
+
+    private func parseCSVRow(_ row: String) -> [String] {
+        var result: [String] = []
+        var current = ""
+        var isInsideQuotes = false
+
+        for character in row {
+            switch character {
+            case "\"":
+                isInsideQuotes.toggle()
+            case "," where !isInsideQuotes:
+                result.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+                current = ""
+            default:
+                current.append(character)
+            }
+        }
+
+        result.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+        return result
+    }
+
+    private func parseImportDate(_ value: String) -> Date? {
+        let formats = ["yyyy-MM-dd", "MM/dd/yyyy", "M/d/yyyy", "MMM d, yyyy"]
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return date
+            }
+        }
+        return nil
+    }
+
+    private func parseImportKind(_ rawValue: String?, amount: Double) -> TransactionKind {
+        let normalized = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if normalized.contains("income") || normalized.contains("deposit") {
+            return .income
+        }
+        if normalized.contains("refund") || normalized.contains("credit") {
+            return .refund
+        }
+        if normalized.contains("transfer") {
+            return .transfer
+        }
+        return .spending
+    }
+
+    private func parseImportCategory(_ rawValue: String?) -> SpendingCategory {
+        guard let normalized = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !normalized.isEmpty else {
+            return .other
+        }
+        return SpendingCategory.allCases.first(where: { $0.rawValue.lowercased() == normalized }) ?? .other
+    }
+
+    private func accountIdForImportedRecord(_ rawValue: String?, defaultAccountId: UUID?) -> UUID? {
+        guard let name = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            return defaultAccountId ?? self.defaultSpendingAccount?.id
+        }
+        return visibleAccounts.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })?.id
+            ?? defaultAccountId
+            ?? self.defaultSpendingAccount?.id
+    }
+
     // MARK: - Add Subscription + Auto-log Transaction
     func addSubscription(
         _ sub: RecurringSubscription,
@@ -884,6 +1497,54 @@ class TransactionData {
         )
     }
 
+    func updateRecurringStatus(_ id: UUID, status: RecurringStatus) {
+        guard let index = subscriptions.firstIndex(where: { $0.id == id }) else { return }
+        let existing = subscriptions[index]
+        subscriptions[index] = RecurringSubscription(
+            id: existing.id,
+            name: existing.name,
+            plan: existing.plan,
+            price: existing.price,
+            iconName: existing.iconName,
+            iconColor: existing.iconColor,
+            bgColor: existing.bgColor,
+            nextBilling: existing.nextBilling,
+            frequencyDays: existing.frequencyDays,
+            frequencyKey: existing.frequencyKey,
+            nextBillingEpoch: existing.nextBillingEpoch,
+            merchantMatchPattern: existing.merchantMatchPattern,
+            expectedAmountMin: existing.expectedAmountMin,
+            expectedAmountMax: existing.expectedAmountMax,
+            linkedTransactionIds: existing.linkedTransactionIds,
+            status: status
+        )
+    }
+
+    func addManualForecastItem(
+        title: String,
+        amount: Double,
+        date: Date,
+        kind: ManualForecastItem.Kind,
+        note: String? = nil
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, amount > 0 else { return }
+        manualForecastItems.append(
+            ManualForecastItem(
+                title: trimmedTitle,
+                amount: amount,
+                date: date,
+                kind: kind,
+                note: note?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            )
+        )
+        manualForecastItems.sort { $0.date < $1.date }
+    }
+
+    func deleteManualForecastItem(id: UUID) {
+        manualForecastItems.removeAll { $0.id == id }
+    }
+
     func syncRecurringTransactions() {
         if isSyncingRecurring { return }
         isSyncingRecurring = true
@@ -897,6 +1558,7 @@ class TransactionData {
         var didMutateSubscriptions = false
 
         for index in updated.indices {
+            guard updated[index].status == .active else { continue }
             guard let epoch = updated[index].nextBillingEpoch else { continue }
             if updated[index].frequencyKey == nil && ((updated[index].frequencyDays ?? 0) <= 0) {
                 continue
@@ -933,7 +1595,8 @@ class TransactionData {
                     merchantMatchPattern: updated[index].merchantMatchPattern,
                     expectedAmountMin: updated[index].expectedAmountMin,
                     expectedAmountMax: updated[index].expectedAmountMax,
-                    linkedTransactionIds: updated[index].linkedTransactionIds
+                    linkedTransactionIds: updated[index].linkedTransactionIds,
+                    status: updated[index].status
                 )
             }
         }
@@ -1139,6 +1802,10 @@ class TransactionData {
         })?.title ?? "Today"
     }
 
+    private func transactionDate(for transaction: SpendingTransaction, referenceDate: Date = Date()) -> Date? {
+        Self.resolvedDate(forGroupTitle: groupTitle(for: transaction.id), now: referenceDate)
+    }
+
     var totalSpent: Double {
         budgetableTransactions.reduce(0) { $0 + $1.amountValue }
     }
@@ -1188,12 +1855,117 @@ class TransactionData {
         let calendar = Calendar.current
         let now = Date()
         return subscriptions.reduce(0) { running, subscription in
+            guard subscription.status == .active else { return running }
             guard let epoch = subscription.nextBillingEpoch else { return running }
             let nextDate = Date(timeIntervalSince1970: epoch)
             guard calendar.isDate(nextDate, equalTo: now, toGranularity: .month) || nextDate > now else {
                 return running
             }
             return running + subscription.price
+        }
+    }
+
+    var cashFlowForecast: CashFlowForecast {
+        cashFlowForecast(referenceDate: Date(), horizonDays: 30)
+    }
+
+    func cashFlowForecast(referenceDate: Date = Date(), horizonDays: Int = 30) -> CashFlowForecast {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: referenceDate)
+        let monthEnd = calendar.dateInterval(of: .month, for: referenceDate)?.end ?? referenceDate
+        let horizonEnd = calendar.date(byAdding: .day, value: horizonDays, to: startOfToday) ?? referenceDate
+        let eventCutoff = min(monthEnd, horizonEnd)
+
+        let billEvents: [CashFlowForecastEvent] = subscriptions.compactMap { subscription in
+            guard subscription.status == .active else { return nil }
+            guard let epoch = subscription.nextBillingEpoch else { return nil }
+            let date = Date(timeIntervalSince1970: epoch)
+            let day = calendar.startOfDay(for: date)
+            guard day >= startOfToday && day <= eventCutoff else { return nil }
+            return CashFlowForecastEvent(
+                id: subscription.id,
+                title: subscription.name,
+                date: day,
+                amount: subscription.price,
+                kind: .bill,
+                subtitle: subscription.plan ?? "Recurring bill"
+            )
+        }
+
+        let manualEvents: [CashFlowForecastEvent] = manualForecastItems.compactMap { item in
+            let day = calendar.startOfDay(for: item.date)
+            guard day >= startOfToday && day <= eventCutoff else { return nil }
+            return CashFlowForecastEvent(
+                id: item.id,
+                title: item.title,
+                date: day,
+                amount: item.amount,
+                kind: item.kind == .income ? .income : .bill,
+                subtitle: item.note ?? (item.kind == .income ? "Manual income" : "Manual bill")
+            )
+        }
+
+        let incomeEvents = inferredIncomeForecastEvents(referenceDate: referenceDate, cutoff: eventCutoff)
+        let events = (billEvents + manualEvents + incomeEvents).sorted { lhs, rhs in
+            if lhs.date != rhs.date { return lhs.date < rhs.date }
+            if lhs.kind != rhs.kind { return lhs.kind == .income }
+            return lhs.title < rhs.title
+        }
+
+        let expectedIncome = events.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
+        let expectedBills = events.filter { $0.kind == .bill }.reduce(0) { $0 + $1.amount }
+        let projectedEndOfMonthCash = liquidCashBalance + expectedIncome - expectedBills
+
+        return CashFlowForecast(
+            startingCash: liquidCashBalance,
+            events: events,
+            projectedEndOfMonthCash: projectedEndOfMonthCash,
+            expectedIncome: expectedIncome,
+            expectedBills: expectedBills
+        )
+    }
+
+    private func inferredIncomeForecastEvents(referenceDate: Date, cutoff: Date) -> [CashFlowForecastEvent] {
+        let calendar = Calendar.current
+        let groups = Dictionary(grouping: incomeTransactions) {
+            ($0.merchantNormalized ?? normalizeMerchant($0.title)).lowercased()
+        }
+
+        return groups.compactMap { merchant, transactions in
+            let datedTransactions = transactions.compactMap { transaction -> (Date, SpendingTransaction)? in
+                guard let date = transactionDate(for: transaction, referenceDate: referenceDate) else { return nil }
+                return (calendar.startOfDay(for: date), transaction)
+            }
+            .sorted { $0.0 < $1.0 }
+
+            guard datedTransactions.count >= 2 else { return nil }
+
+            let intervals = zip(datedTransactions, datedTransactions.dropFirst()).compactMap { lhs, rhs in
+                let days = calendar.dateComponents([.day], from: lhs.0, to: rhs.0).day ?? 0
+                return days > 0 ? days : nil
+            }
+
+            guard !intervals.isEmpty else { return nil }
+            let averageInterval = Int((Double(intervals.reduce(0, +)) / Double(intervals.count)).rounded())
+            guard averageInterval >= 7 && averageInterval <= 35 else { return nil }
+
+            guard let last = datedTransactions.last else { return nil }
+            guard let nextDate = calendar.date(byAdding: .day, value: averageInterval, to: last.0) else { return nil }
+            let nextDay = calendar.startOfDay(for: nextDate)
+            let startOfToday = calendar.startOfDay(for: referenceDate)
+            guard nextDay >= startOfToday && nextDay <= cutoff else { return nil }
+
+            let averageAmount = datedTransactions.reduce(0.0) { $0 + abs($1.1.amountSignedValue) } / Double(datedTransactions.count)
+            let title = last.1.title.isEmpty ? merchant.capitalized : last.1.title
+
+            return CashFlowForecastEvent(
+                id: UUID(),
+                title: title,
+                date: nextDay,
+                amount: averageAmount,
+                kind: .income,
+                subtitle: "Expected income"
+            )
         }
     }
 
@@ -1210,7 +1982,7 @@ class TransactionData {
         let remainingBudget = max(totalMonthlyBudget - monthlySpent, 0)
         let cashConstrainedCapacity: Double
 
-        cashConstrainedCapacity = max(liquidCashBalance - upcomingRecurringTotal, 0)
+        cashConstrainedCapacity = max(cashFlowForecast.projectedEndOfMonthCash, 0)
 
         return min(remainingBudget, cashConstrainedCapacity)
     }

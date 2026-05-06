@@ -18,7 +18,10 @@ struct SpendingHomeView: View {
     @State private var showAddTransaction = false
     @State private var showTransactions = false
     @State private var transactionsSheetScope: TransactionsSheetScope = .all
+    @State private var drillDownCategory: SpendingCategory?
+    @State private var drillDownFilter: TransactionsView.TransactionFilter = .all
     @State private var showRecurring = false
+    @State private var showCashFlow = false
     @State private var selectedTrendPeriod: TrendPeriod = .weekly
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
     @AppStorage("penny.profile.name") private var storedProfileName: String = "Alex Rivers"
@@ -52,7 +55,11 @@ struct SpendingHomeView: View {
 
     // Now pulls from your real recurring subscriptions instead of hardcoded values
     var upcomingRecurring: [RecurringSubscription] {
-        Array(data.subscriptions.prefix(3))
+        Array(data.subscriptions.filter { $0.status == .active }.prefix(3))
+    }
+
+    private var cashFlowForecast: CashFlowForecast {
+        data.cashFlowForecast
     }
 
     var spendingInsight: String {
@@ -245,6 +252,8 @@ struct SpendingHomeView: View {
 
                         BalanceView(onTap: {
                             transactionsSheetScope = .today
+                            drillDownCategory = nil
+                            drillDownFilter = .all
                             showTransactions = true
                         })
                             .padding(.bottom, 8)
@@ -254,6 +263,10 @@ struct SpendingHomeView: View {
                             .padding(.bottom, 8)
 
                         monthOverviewSection
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 8)
+
+                        cashFlowForecastSection
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
 
@@ -539,14 +552,14 @@ struct SpendingHomeView: View {
                 monthMetricCard(
                     title: "SAFE TO SPEND",
                     value: "$\(String(format: "%.0f", data.safeToSpendThisMonth))",
-                    subtitle: "after upcoming bills",
+                    subtitle: "after forecasted cash flow",
                     accent: Color(red: 0.29, green: 0.87, blue: 0.50)
                 )
 
                 monthMetricCard(
                     title: "UPCOMING BILLS",
-                    value: "$\(String(format: "%.0f", data.upcomingRecurringTotal))",
-                    subtitle: "\(upcomingRecurring.count) recurring charges",
+                    value: "$\(String(format: "%.0f", cashFlowForecast.expectedBills))",
+                    subtitle: "\(cashFlowForecast.events.filter { $0.kind == .bill }.count) forecasted charges",
                     accent: Color(red: 0.38, green: 0.65, blue: 0.98)
                 )
             }
@@ -568,6 +581,116 @@ struct SpendingHomeView: View {
                 )
             }
         }
+    }
+
+    private var cashFlowForecastSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Cash Flow Forecast")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+
+                Spacer()
+
+                Text(currencyString(cashFlowForecast.projectedEndOfMonthCash))
+                    .font(.system(size: 16, weight: .regular, design: .serif))
+                    .foregroundColor(cashFlowForecast.projectedEndOfMonthCash >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
+            }
+
+            if cashFlowForecast.events.isEmpty {
+                emptySectionCard("No forecasted cash events yet", subtitle: "Add recurring bills or income transactions and Penny will project your month-end cash here.")
+            } else {
+                VStack(spacing: 8) {
+                    HStack {
+                        Spacer()
+                        Button {
+                            showCashFlow = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Open Forecast")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        forecastSummaryPill(
+                            title: "Starting Cash",
+                            value: currencyString(cashFlowForecast.startingCash),
+                            accent: Color.white.opacity(0.8)
+                        )
+                        forecastSummaryPill(
+                            title: "Expected Income",
+                            value: currencyString(cashFlowForecast.expectedIncome),
+                            accent: Color(red: 0.29, green: 0.87, blue: 0.50)
+                        )
+                        forecastSummaryPill(
+                            title: "Expected Bills",
+                            value: currencyString(cashFlowForecast.expectedBills),
+                            accent: Color(red: 1.0, green: 0.42, blue: 0.16)
+                        )
+                    }
+
+                    ForEach(Array(cashFlowForecast.events.prefix(4))) { event in
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(event.kind == .income ? Color(red: 0.29, green: 0.87, blue: 0.50) : Color(red: 1.0, green: 0.42, blue: 0.16))
+                                .frame(width: 8, height: 8)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(event.title)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(.white)
+                                Text("\(forecastDateString(event.date)) • \(event.subtitle)")
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+
+                            Spacer()
+
+                            Text((event.kind == .income ? "+" : "-") + currencyString(event.amount).replacingOccurrences(of: "-", with: ""))
+                                .font(.system(size: 14, weight: .regular, design: .serif))
+                                .foregroundColor(event.kind == .income ? Color(red: 0.29, green: 0.87, blue: 0.50) : .white)
+                        }
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.white.opacity(0.04))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func forecastSummaryPill(title: String, value: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 8, weight: .bold))
+                .tracking(1.2)
+                .foregroundColor(.white.opacity(0.35))
+            Text(value)
+                .font(.system(size: 12, weight: .regular, design: .serif))
+                .foregroundColor(accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color.white.opacity(0.04))
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+        )
+    }
+
+    private func forecastDateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
     }
 
     // MARK: - Insight Banner
@@ -660,26 +783,34 @@ struct SpendingHomeView: View {
                         )
                 } else {
                     ForEach(data.categoryTotals) { category in
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(category.color)
-                                .frame(width: 6, height: 6)
+                        Button {
+                            drillDownCategory = SpendingCategory.allCases.first(where: { $0.rawValue == category.name })
+                            drillDownFilter = .spending
+                            transactionsSheetScope = .all
+                            showTransactions = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(category.color)
+                                    .frame(width: 6, height: 6)
 
-                            Text(category.name)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.8))
+                                Text(category.name)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.8))
 
-                            Text("$\(String(format: "%.0f", category.amount))")
-                                .font(.system(size: 12, weight: .regular, design: .serif))
-                                .foregroundColor(.white.opacity(0.4))
+                                Text("$\(String(format: "%.0f", category.amount))")
+                                    .font(.system(size: 12, weight: .regular, design: .serif))
+                                    .foregroundColor(.white.opacity(0.4))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(Color.white.opacity(0.05))
+                                    .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
+                            )
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .fill(Color.white.opacity(0.05))
-                                .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
-                        )
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -777,6 +908,8 @@ struct SpendingHomeView: View {
 
                 Button {
                     transactionsSheetScope = .all
+                    drillDownCategory = nil
+                    drillDownFilter = .all
                     showTransactions = true
                     Haptics.light()
                 } label: {
@@ -852,7 +985,16 @@ struct SpendingHomeView: View {
             }
         }
         .sheet(isPresented: $showTransactions) {
-            TransactionsView(scope: transactionsSheetScope == .today ? .today : .all)
+            TransactionsView(
+                scope: transactionsSheetScope == .today ? .today : .all,
+                initialCategory: drillDownCategory,
+                initialFilter: drillDownFilter
+            )
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showCashFlow) {
+            CashFlowView()
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
         }

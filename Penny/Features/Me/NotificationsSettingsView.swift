@@ -1,15 +1,18 @@
 import SwiftUI
+import UserNotifications
 
 // MARK: - Notifications Settings View
 struct NotificationsSettingsView: View {
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(TransactionData.self) private var data
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
     @AppStorage("penny.notifications.spendingAlerts") private var spendingAlerts = true
     @AppStorage("penny.notifications.budgetWarnings") private var budgetWarnings = true
     @AppStorage("penny.notifications.weeklyDigest") private var weeklyDigest = false
     @AppStorage("penny.notifications.savingTips") private var savingTips = false
     @AppStorage("penny.notifications.billReminders") private var billReminders = true
+    @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -19,6 +22,8 @@ struct NotificationsSettingsView: View {
                 sectionLabel(language.text(.alerts))
 
                 notifCard {
+                    statusRow
+                    divider
                     toggleRow(
                         icon: "bell.badge.fill",
                         title: language.text(.spendingAlerts),
@@ -54,6 +59,26 @@ struct NotificationsSettingsView: View {
                         isOn: $savingTips
                     )
                 }
+
+                sectionLabel("Test")
+                    .padding(.top, 24)
+
+                notifCard {
+                    actionRow(
+                        icon: "checkmark.bubble.fill",
+                        title: "Send Test Notification",
+                        description: "Schedules a local notification in 5 seconds."
+                    ) {
+                        Task {
+                            let manager = LocalNotificationManager.shared
+                            let alreadyAuthorized = await manager.isAuthorizedForUI
+                            let granted = alreadyAuthorized ? true : await manager.requestAuthorization()
+                            guard granted else { return }
+                            await manager.scheduleTestNotification()
+                            await refreshAuthorizationStatus()
+                        }
+                    }
+                }
                 .padding(.bottom, 40)
             }
             .padding(.horizontal, 20)
@@ -61,6 +86,35 @@ struct NotificationsSettingsView: View {
         }
         .background(backgroundGradient)
         .navigationBarHidden(true)
+        .task {
+            await refreshAuthorizationStatus()
+            await refreshLocalNotifications()
+        }
+        .onChange(of: billReminders) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
+        .onChange(of: weeklyDigest) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
+        .onChange(of: spendingAlerts) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
+        .onChange(of: budgetWarnings) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
+        .onChange(of: savingTips) { _, _ in
+            Task {
+                await refreshLocalNotifications()
+            }
+        }
     }
 
     // MARK: - Header
@@ -141,6 +195,64 @@ struct NotificationsSettingsView: View {
         .padding(16)
     }
 
+    private var statusRow: some View {
+        HStack(spacing: 14) {
+            iconCircle(statusIcon)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Local Notifications")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+                Text(statusDescription)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundColor(.white.opacity(0.4))
+            }
+
+            Spacer()
+
+            Button(authorizationActionTitle) {
+                Task {
+                    _ = await LocalNotificationManager.shared.requestAuthorization()
+                    await refreshAuthorizationStatus()
+                    await refreshLocalNotifications()
+                }
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(MeTheme.accent.opacity(authorizationStatus.isEnabled ? 0.14 : 0.85))
+            .clipShape(Capsule())
+            .disabled(authorizationStatus.isEnabled)
+        }
+        .padding(16)
+    }
+
+    private func actionRow(icon: String, title: String, description: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                iconCircle(icon)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text(description)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .padding(16)
+        }
+        .buttonStyle(.plain)
+    }
+
     private func iconCircle(_ systemName: String) -> some View {
         Circle()
             .fill(Color.white.opacity(0.05))
@@ -165,9 +277,61 @@ struct NotificationsSettingsView: View {
     private var language: AppLanguage {
         AppLanguage(rawValue: languageCode) ?? .english
     }
+
+    private var authorizationActionTitle: String {
+        authorizationStatus.isEnabled ? "Enabled" : "Allow"
+    }
+
+    private var statusIcon: String {
+        authorizationStatus.isEnabled ? "bell.circle.fill" : "bell.slash.circle.fill"
+    }
+
+    private var statusDescription: String {
+        switch authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return "Bill reminders and weekly digests can be delivered on this device."
+        case .denied:
+            return "Notifications are disabled for Penny. Re-enable them in Settings."
+        case .notDetermined:
+            return "Allow notifications to test reminders directly on your phone."
+        @unknown default:
+            return "Notification status is unavailable."
+        }
+    }
+
+    private func refreshAuthorizationStatus() async {
+        authorizationStatus = await LocalNotificationManager.shared.authorizationStatus()
+    }
+
+    private func refreshLocalNotifications() async {
+        if authorizationStatus == .notDetermined {
+            _ = await LocalNotificationManager.shared.requestAuthorization()
+            await refreshAuthorizationStatus()
+        }
+
+        await LocalNotificationManager.shared.refreshNotifications(
+            using: data,
+            spendingAlertsEnabled: spendingAlerts,
+            budgetWarningsEnabled: budgetWarnings,
+            billRemindersEnabled: billReminders,
+            weeklyDigestEnabled: weeklyDigest,
+            savingTipsEnabled: savingTips
+        )
+    }
 }
 
 #Preview {
     NotificationsSettingsView()
         .preferredColorScheme(.dark)
+}
+
+private extension UNAuthorizationStatus {
+    var isEnabled: Bool {
+        switch self {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        default:
+            return false
+        }
+    }
 }

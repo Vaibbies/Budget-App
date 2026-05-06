@@ -5,11 +5,18 @@ struct RecurringView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(TransactionData.self) private var data
     @State private var showAddRecurring = false
+    @State private var selectedStatus: RecurringStatus = .active
 
-    var subscriptions: [RecurringSubscription] { data.subscriptions }
+    var subscriptions: [RecurringSubscription] {
+        data.subscriptions.filter { $0.status == selectedStatus }
+    }
+
+    var activeSubscriptions: [RecurringSubscription] {
+        data.subscriptions.filter { $0.status == .active }
+    }
 
     var monthlyTotal: Double {
-        subscriptions.reduce(0) { $0 + $1.price }
+        activeSubscriptions.reduce(0) { $0 + $1.price }
     }
 
     var previousMonthTotal: Double {
@@ -99,7 +106,7 @@ struct RecurringView: View {
                             .padding(.horizontal, 24)
 
                         HStack {
-                            Text("Active Services")
+                            Text(selectedStatus.rawValue + " Services")
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(.white)
                             Spacer()
@@ -109,20 +116,20 @@ struct RecurringView: View {
                         }
                         .padding(.horizontal, 24)
 
-                        LazyVGrid(columns: columns, spacing: 12) {
-                            ForEach(subscriptions) { sub in
-                                SubscriptionSquareCard(
-                                    subscription: sub,
-                                    onDelete: {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                                            data.subscriptions.removeAll { $0.id == sub.id }
-                                        }
-                                        Haptics.medium()
-                                    }
-                                )
+                        statusPicker
+                            .padding(.horizontal, 24)
+
+                        if subscriptions.isEmpty {
+                            emptyState
+                                .padding(.horizontal, 24)
+                        } else {
+                            LazyVGrid(columns: columns, spacing: 12) {
+                                ForEach(subscriptions) { sub in
+                                    recurringCard(sub)
+                                }
                             }
+                            .padding(.horizontal, 24)
                         }
-                        .padding(.horizontal, 24)
                     }
                     .padding(.bottom, 48)
                 }
@@ -135,6 +142,93 @@ struct RecurringView: View {
         }
         .onAppear {
             data.syncRecurringTransactions()
+        }
+    }
+
+    private var statusPicker: some View {
+        HStack(spacing: 8) {
+            ForEach(RecurringStatus.allCases) { status in
+                Button {
+                    selectedStatus = status
+                    Haptics.light()
+                } label: {
+                    Text(status.rawValue)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(selectedStatus == status ? .white : .white.opacity(0.6))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(
+                            Capsule()
+                                .fill(selectedStatus == status ? Color(red: 1.0, green: 0.42, blue: 0.16) : Color.white.opacity(0.06))
+                                .overlay(Capsule().stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 28, weight: .light))
+                .foregroundColor(.white.opacity(0.4))
+
+            Text("No \(selectedStatus.rawValue.lowercased()) recurrings")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.white)
+
+            Text(selectedStatus == .active
+                 ? "Add subscriptions or bills and Penny will forecast them here."
+                 : "Move services between active, paused, and archived as your bills change.")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(.white.opacity(0.45))
+                .multilineTextAlignment(.center)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color.white.opacity(0.04))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.white.opacity(0.06), lineWidth: 1))
+        )
+    }
+
+    private func recurringCard(_ sub: RecurringSubscription) -> some View {
+        SubscriptionSquareCard(
+            subscription: sub,
+            onDelete: {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                    data.subscriptions.removeAll { $0.id == sub.id }
+                }
+                Haptics.medium()
+            }
+        )
+        .overlay(alignment: .topTrailing) {
+            Menu {
+                if sub.status != .active {
+                    Button("Mark Active") {
+                        data.updateRecurringStatus(sub.id, status: .active)
+                    }
+                }
+                if sub.status != .paused {
+                    Button("Pause") {
+                        data.updateRecurringStatus(sub.id, status: .paused)
+                    }
+                }
+                if sub.status != .archived {
+                    Button("Archive") {
+                        data.updateRecurringStatus(sub.id, status: .archived)
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(8)
+                    .background(Circle().fill(Color.black.opacity(0.35)))
+            }
+            .padding(8)
         }
     }
 

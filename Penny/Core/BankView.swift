@@ -12,9 +12,15 @@ struct BankView: View {
     @State private var showAddAccount = false
     @State private var editingAccount: Account?
     @State private var showBudgetEditor = false
+    @State private var selectedAccountForTransactions: Account?
+    @State private var showCashFlow = false
 
     private var visibleAccounts: [Account] {
         data.visibleAccounts
+    }
+
+    private var cashFlowForecast: CashFlowForecast {
+        data.cashFlowForecast
     }
 
     var body: some View {
@@ -43,7 +49,9 @@ struct BankView: View {
                         .padding(.bottom, 24)
                 }
 
-                sectionHeader("Snapshot")
+                sectionHeader("Snapshot", actionTitle: "Forecast") {
+                    showCashFlow = true
+                }
                 healthSection
                     .padding(.bottom, 40)
             }
@@ -64,6 +72,16 @@ struct BankView: View {
         .sheet(isPresented: $showBudgetEditor) {
             DailyBudgetEditorView()
                 .presentationCornerRadius(28)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $selectedAccountForTransactions) { account in
+            TransactionsView(initialAccountId: account.id)
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showCashFlow) {
+            CashFlowView()
+                .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
         }
     }
@@ -344,37 +362,44 @@ struct BankView: View {
         let hasActivity = transactionCount > 0 || monthSpend > 0 || monthIncome > 0
 
         return HStack(spacing: 14) {
-            Circle()
-                .fill(accountAccent(for: account.type).opacity(0.14))
-                .frame(width: 38, height: 38)
-                .overlay(
-                    Image(systemName: accountIcon(for: account.type))
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(accountAccent(for: account.type))
-                )
+            Button {
+                selectedAccountForTransactions = account
+            } label: {
+                HStack(spacing: 14) {
+                    Circle()
+                        .fill(accountAccent(for: account.type).opacity(0.14))
+                        .frame(width: 38, height: 38)
+                        .overlay(
+                            Image(systemName: accountIcon(for: account.type))
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(accountAccent(for: account.type))
+                        )
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(account.name)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.9))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(account.name)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.9))
 
-                Text(account.institution)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundColor(.white.opacity(0.4))
+                        Text(account.institution)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(currencyString(account.balance))
+                            .font(.system(size: 15, weight: .semibold, design: .serif))
+                            .foregroundColor(account.balance >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
+
+                        Text(account.type.rawValue.uppercased())
+                            .font(.system(size: 9, weight: .medium))
+                            .tracking(1)
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+                }
             }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(currencyString(account.balance))
-                    .font(.system(size: 15, weight: .semibold, design: .serif))
-                    .foregroundColor(account.balance >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
-
-                Text(account.type.rawValue.uppercased())
-                    .font(.system(size: 9, weight: .medium))
-                    .tracking(1)
-                    .foregroundColor(.white.opacity(0.3))
-            }
+            .buttonStyle(.plain)
 
             Button {
                 editingAccount = account
@@ -517,7 +542,11 @@ struct BankView: View {
             divider
             snapshotRow(title: "Monthly Net", subtitle: "income minus budgetable spend", value: currencyString(data.monthlyNet), valueColor: data.monthlyNet >= 0 ? warmGold : warmAccent)
             divider
-            snapshotRow(title: "Upcoming Bills", subtitle: "next recurring charges in this cycle", value: currencyString(data.upcomingRecurringTotal), valueColor: .white.opacity(0.75))
+            snapshotRow(title: "Projected Month End", subtitle: "starting cash plus forecasted inflows and bills", value: currencyString(cashFlowForecast.projectedEndOfMonthCash), valueColor: cashFlowForecast.projectedEndOfMonthCash >= 0 ? .white.opacity(0.75) : warmAccent)
+            divider
+            snapshotRow(title: "Expected Bills", subtitle: "dated recurring charges in this forecast window", value: currencyString(cashFlowForecast.expectedBills), valueColor: .white.opacity(0.75))
+            divider
+            snapshotRow(title: "Expected Income", subtitle: "inferred paychecks and deposits this cycle", value: currencyString(cashFlowForecast.expectedIncome), valueColor: warmGold)
             divider
             snapshotRow(title: "Goal Progress", subtitle: "saved across all active goals", value: currencyString(data.totalGoalProgress), valueColor: warmGold)
         }

@@ -5,14 +5,16 @@ struct AddTransactionView: View {
     @Environment(\.dismiss) var dismiss
     @State private var amountString = "0"
     @State private var merchantName = ""
+    @State private var selectedKind: TransactionKind = .spending
     @State private var selectedCategory: SpendingCategory = .dining
     @State private var selectedDate = Date()
     @State private var selectedAccountId: UUID?
     @State private var isImpulse = false
+    @State private var isSplitTransaction = false
+    @State private var splitAllocations: [SplitTransactionAllocation] = []
     @State private var isListening = false
     @State private var showRecurringPrompt = false
     @State private var showAddRecurring = false
-    @State private var pendingTransaction: SpendingTransaction? = nil
 
     private var data = TransactionData.shared
 
@@ -23,6 +25,22 @@ struct AddTransactionView: View {
 
     private var amountDouble: Double {
         (Double(amountString) ?? 0) / 100
+    }
+
+    private var headerTitle: String {
+        "NEW \(selectedKind.editorTitle.uppercased())"
+    }
+
+    private var amountPreviewColor: Color {
+        selectedKind.signedAmountColor
+    }
+
+    private var splitTotal: Double {
+        splitAllocations.reduce(0) { $0 + $1.amount }
+    }
+
+    private var splitDifference: Double {
+        amountDouble - splitTotal
     }
 
     var body: some View {
@@ -63,7 +81,7 @@ struct AddTransactionView: View {
                             )
                     }
                     Spacer()
-                    Text("NEW EXPENSE")
+                    Text(headerTitle)
                         .font(.system(size: 12, weight: .medium))
                         .tracking(2)
                         .foregroundColor(.white.opacity(0.5))
@@ -93,13 +111,17 @@ struct AddTransactionView: View {
                             .foregroundColor(.white.opacity(0.5))
                         Text(displayAmount)
                             .font(.system(size: 64, weight: .light, design: .serif))
-                            .foregroundColor(.white)
+                            .foregroundColor(amountPreviewColor)
                             .minimumScaleFactor(0.5)
                     }
                     NoMoveTextField(placeholder: "MERCHANT NAME", text: $merchantName)
                         .frame(height: 30)
                 }
                 .padding(.bottom, 20)
+
+                kindSelector
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 16)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -130,22 +152,24 @@ struct AddTransactionView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
                         )
                     Spacer()
-                    HStack(spacing: 8) {
-                        Text("Impulse")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.white.opacity(0.5))
-                        Toggle("", isOn: $isImpulse)
-                            .labelsHidden()
-                            .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
-                            .scaleEffect(0.85)
+                    if selectedKind.usesImpulseFlag {
+                        HStack(spacing: 8) {
+                            Text("Impulse")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white.opacity(0.5))
+                            Toggle("", isOn: $isImpulse)
+                                .labelsHidden()
+                                .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
+                                .scaleEffect(0.85)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.white.opacity(0.06))
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                        )
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(Color.white.opacity(0.06))
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
-                    )
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
@@ -156,13 +180,17 @@ struct AddTransactionView: View {
                         .padding(.bottom, 20)
                 }
 
+                splitSection
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 20)
+
                 KeypadView { key in handleKey(key) }
                     .padding(.horizontal, 24)
 
                 Spacer()
 
                 Button(action: logExpense) {
-                    Text("Log Expense")
+                    Text(selectedKind.actionTitle)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -217,8 +245,14 @@ struct AddTransactionView: View {
             .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
         }
-        .onAppear {
+                .onAppear {
             selectedAccountId = data.defaultSpendingAccount?.id
+            if splitAllocations.isEmpty {
+                splitAllocations = [
+                    SplitTransactionAllocation(category: selectedCategory, amount: 0, label: ""),
+                    SplitTransactionAllocation(category: .other, amount: 0, label: "")
+                ]
+            }
         }
     }
 
@@ -243,50 +277,41 @@ struct AddTransactionView: View {
             ? timeFormatter.string(from: Date())
             : "Added"
 
-        let dayLabel: String
-        if Calendar.current.isDateInToday(selectedDate) {
-            dayLabel = "Today"
-        } else if Calendar.current.isDateInYesterday(selectedDate) {
-            dayLabel = "Yesterday"
-        } else {
-            let fmt = DateFormatter()
-            fmt.dateFormat = "EEEE, MMM d"
-            dayLabel = fmt.string(from: selectedDate)
-        }
-
-        let transaction = SpendingTransaction(
+        let rawTitle = merchantName.isEmpty ? selectedCategory.rawValue : merchantName
+        let transaction = data.normalizeAndApplyRules(to: SpendingTransaction(
             icon: selectedCategory.icon,
-            title: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
+            title: rawTitle,
             subtitle: selectedCategory.rawValue,
             time: timeString,
-            amount: "-$\(String(format: "%.2f", amountDouble))",
-            isImpulse: isImpulse,
+            amount: selectedKind.signedAmountString(for: amountDouble),
+            isImpulse: selectedKind.usesImpulseFlag ? isImpulse : false,
             iconColor: selectedCategory.color,
             bgColor: selectedCategory.color.opacity(0.1),
             borderColor: selectedCategory.color.opacity(0.2),
             category: selectedCategory,
             accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
-            kind: .spending,
-            merchantRaw: merchantName.isEmpty ? selectedCategory.rawValue : merchantName,
-            merchantNormalized: data.normalizeMerchant(merchantName.isEmpty ? selectedCategory.rawValue : merchantName)
-        )
+            kind: selectedKind,
+            merchantRaw: rawTitle,
+            merchantNormalized: data.normalizeMerchant(rawTitle)
+        ))
 
-        if let index = data.groups.firstIndex(where: { $0.title == dayLabel }) {
-            var updated = data.groups[index].transactions
-            updated.insert(transaction, at: 0)
-            data.groups[index] = SpendingTransactionGroup(title: data.groups[index].title, transactions: updated)
+        if isSplitTransaction {
+            let validAllocations = normalizedSplitAllocations()
+            guard !validAllocations.isEmpty else { return }
+            data.addSplitTransactions(
+                merchantName: rawTitle,
+                kind: selectedKind,
+                accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
+                isImpulse: isImpulse,
+                date: selectedDate,
+                time: timeString,
+                allocations: validAllocations
+            )
         } else {
-            let fmt = DateFormatter()
-            fmt.dateFormat = "EEEE, MMM d"
-            let insertIndex = data.groups.firstIndex(where: { group in
-                guard group.title != "Today" && group.title != "Yesterday" else { return false }
-                if let groupDate = fmt.date(from: group.title) { return groupDate < selectedDate }
-                return false
-            }) ?? data.groups.endIndex
-            data.groups.insert(SpendingTransactionGroup(title: dayLabel, transactions: [transaction]), at: insertIndex)
+            data.addTransaction(transaction, on: selectedDate)
         }
 
-        if selectedCategory == .subscriptions {
+        if selectedKind == .spending && selectedCategory == .subscriptions {
             showRecurringPrompt = true
         } else {
             dismiss()
@@ -321,6 +346,97 @@ struct AddTransactionView: View {
                     .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
             )
         }
+    }
+
+    private var kindSelector: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(TransactionKind.allCases, id: \.self) { kind in
+                    Button {
+                        selectedKind = kind
+                        if !kind.usesImpulseFlag {
+                            isImpulse = false
+                        }
+                        Haptics.light()
+                    } label: {
+                        Text(kind.editorTitle)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(selectedKind == kind ? .white : .white.opacity(0.6))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(
+                                Capsule()
+                                    .fill(selectedKind == kind ? kind.signedAmountColor.opacity(0.95) : Color.white.opacity(0.06))
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(selectedKind == kind ? kind.signedAmountColor.opacity(0.25) : Color.white.opacity(0.06), lineWidth: 1)
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var splitSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $isSplitTransaction) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Split transaction")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                    Text("Break this amount across multiple categories.")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.white.opacity(0.45))
+                }
+            }
+            .toggleStyle(SwitchToggleStyle(tint: Color(red: 1.0, green: 0.42, blue: 0.16)))
+
+            if isSplitTransaction {
+                VStack(spacing: 10) {
+                    ForEach($splitAllocations) { $allocation in
+                        SplitAllocationEditor(allocation: $allocation)
+                    }
+
+                    HStack {
+                        Button {
+                            splitAllocations.append(
+                                SplitTransactionAllocation(category: selectedCategory, amount: 0, label: "")
+                            )
+                        } label: {
+                            Label("Add Split", systemImage: "plus")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(Color(red: 1.0, green: 0.55, blue: 0.36))
+                        }
+
+                        Spacer()
+
+                        Text("Left: $\(String(format: "%.2f", max(splitDifference, 0)))")
+                            .font(.system(size: 12, weight: .medium, design: .serif))
+                            .foregroundColor(abs(splitDifference) < 0.01 ? Color(red: 0.29, green: 0.87, blue: 0.50) : .white.opacity(0.55))
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.05))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.06), lineWidth: 1))
+        )
+    }
+
+    private func normalizedSplitAllocations() -> [SplitTransactionAllocation] {
+        let nonZero = splitAllocations.filter { $0.amount > 0 }
+        guard !nonZero.isEmpty else { return [] }
+
+        var result = nonZero
+        let delta = amountDouble - result.reduce(0) { $0 + $1.amount }
+        if abs(delta) >= 0.01, let lastIndex = result.indices.last {
+            result[lastIndex].amount += delta
+        }
+        return result.filter { $0.amount > 0 }
     }
 }
 
@@ -398,6 +514,66 @@ struct KeypadView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+struct SplitAllocationEditor: View {
+    @Binding var allocation: SplitTransactionAllocation
+    @State private var amountText = ""
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Picker("Category", selection: $allocation.category) {
+                    ForEach(SpendingCategory.allCases, id: \.self) { category in
+                        Text(category.rawValue).tag(category)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                )
+
+                TextField("0.00", text: $amountText)
+                    .keyboardType(.decimalPad)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.trailing)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white.opacity(0.06))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                    )
+                    .onChange(of: amountText) { _, newValue in
+                        let cleaned = newValue
+                            .replacingOccurrences(of: "$", with: "")
+                            .replacingOccurrences(of: ",", with: "")
+                        allocation.amount = Double(cleaned) ?? 0
+                    }
+            }
+
+            TextField("Label (optional)", text: $allocation.label)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .foregroundColor(.white.opacity(0.9))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.06))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                )
+        }
+        .onAppear {
+            amountText = allocation.amount == 0 ? "" : String(format: "%.2f", allocation.amount)
         }
     }
 }
