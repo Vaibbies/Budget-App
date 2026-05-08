@@ -13,6 +13,7 @@ struct BankView: View {
     @State private var editingAccount: Account?
     @State private var showBudgetEditor = false
     @State private var selectedAccountForTransactions: Account?
+    @State private var selectedInvestmentAccount: Account?
     @State private var showCashFlow = false
 
     private var visibleAccounts: [Account] {
@@ -36,6 +37,14 @@ struct BankView: View {
 
                 metricGrid
                     .padding(.bottom, 24)
+
+                if !data.investmentAccounts.isEmpty || !data.investmentHoldings.isEmpty {
+                    sectionHeader("Investments", actionTitle: data.investmentAccounts.isEmpty ? nil : "Manage") {
+                        selectedInvestmentAccount = data.investmentAccounts.first
+                    }
+                    investmentSection
+                        .padding(.bottom, 24)
+                }
 
                 sectionHeader("Accounts", actionTitle: visibleAccounts.isEmpty ? nil : "Add") {
                     showAddAccount = true
@@ -76,6 +85,11 @@ struct BankView: View {
         }
         .sheet(item: $selectedAccountForTransactions) { account in
             TransactionsView(initialAccountId: account.id)
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $selectedInvestmentAccount) { account in
+            InvestmentAccountDetailView(account: account)
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
         }
@@ -163,6 +177,9 @@ struct BankView: View {
     private var heroSubtitle: String {
         if visibleAccounts.isEmpty {
             return "Add your real accounts here and the rest of the app will use these balances."
+        }
+        if data.investmentPerformance().holdingsCount > 0 {
+            return "\(data.investmentPerformance().holdingsCount) holdings tracked across \(data.investmentAccounts.count) investment accounts"
         }
         return "\(visibleAccounts.count) manual accounts powering your balances and safe-to-spend numbers"
     }
@@ -302,6 +319,68 @@ struct BankView: View {
         }
     }
 
+    private var investmentSection: some View {
+        let summary = data.investmentPerformance()
+        let allocation = data.portfolioAllocation()
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                metricChip(
+                    title: "Portfolio Value",
+                    value: currencyString(summary.marketValue),
+                    accent: warmCream
+                )
+
+                metricChip(
+                    title: "Gain / Loss",
+                    value: signedCurrencyString(summary.gainLoss),
+                    accent: summary.gainLoss >= 0 ? warmOlive : warmAccent
+                )
+            }
+
+            HStack(spacing: 10) {
+                metricChip(
+                    title: "Cost Basis",
+                    value: currencyString(summary.costBasis),
+                    accent: warmGold
+                )
+
+                metricChip(
+                    title: "Return",
+                    value: percentString(summary.gainLossPercent),
+                    accent: summary.gainLossPercent >= 0 ? warmOlive : warmRose
+                )
+            }
+
+            if allocation.isEmpty {
+                Text("Add holdings to an investment account to unlock allocation and performance details.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+                    .padding(.top, 2)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("ASSET ALLOCATION")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1.5)
+                        .foregroundColor(.white.opacity(0.35))
+
+                    ForEach(allocation) { slice in
+                        allocationRow(slice)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Color.white.opacity(0.04))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                )
+        )
+    }
+
     private var emptyAccountsState: some View {
         VStack(spacing: 14) {
             Image(systemName: "building.columns.circle")
@@ -359,11 +438,18 @@ struct BankView: View {
         let monthIncome = data.monthlyIncome(forAccount: account.id)
         let monthNet = data.monthlyNet(forAccount: account.id)
         let transactionCount = data.transactions(forAccount: account.id).count
-        let hasActivity = transactionCount > 0 || monthSpend > 0 || monthIncome > 0
+        let investmentSummary = data.investmentPerformance(forAccount: account.id)
+        let hasActivity = account.type == .investment
+            ? investmentSummary.holdingsCount > 0
+            : transactionCount > 0 || monthSpend > 0 || monthIncome > 0
 
         return HStack(spacing: 14) {
             Button {
-                selectedAccountForTransactions = account
+                if account.type == .investment {
+                    selectedInvestmentAccount = account
+                } else {
+                    selectedAccountForTransactions = account
+                }
             } label: {
                 HStack(spacing: 14) {
                     Circle()
@@ -388,9 +474,9 @@ struct BankView: View {
                     Spacer()
 
                     VStack(alignment: .trailing, spacing: 3) {
-                        Text(currencyString(account.balance))
+                        Text(currencyString(data.effectiveBalance(for: account)))
                             .font(.system(size: 15, weight: .semibold, design: .serif))
-                            .foregroundColor(account.balance >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
+                            .foregroundColor(data.effectiveBalance(for: account) >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
 
                         Text(account.type.rawValue.uppercased())
                             .font(.system(size: 9, weight: .medium))
@@ -429,29 +515,53 @@ struct BankView: View {
         .overlay(alignment: .bottomLeading) {
             Group {
                 if hasActivity {
-                    HStack(spacing: 8) {
-                        accountActivityPill(
-                            title: "Spent",
-                            value: currencyString(monthSpend),
-                            accent: warmAccent
-                        )
-
-                        if monthIncome > 0 {
+                    if account.type == .investment {
+                        HStack(spacing: 8) {
                             accountActivityPill(
-                                title: "Income",
-                                value: currencyString(monthIncome),
-                                accent: warmGold
+                                title: "Holdings",
+                                value: "\(investmentSummary.holdingsCount)",
+                                accent: warmCream
+                            )
+
+                            accountActivityPill(
+                                title: "Gain/Loss",
+                                value: signedCurrencyString(investmentSummary.gainLoss),
+                                accent: investmentSummary.gainLoss >= 0 ? warmOlive : warmRose
+                            )
+
+                            accountActivityPill(
+                                title: "Return",
+                                value: percentString(investmentSummary.gainLossPercent),
+                                accent: investmentSummary.gainLossPercent >= 0 ? warmOlive : warmRose
                             )
                         }
+                        .padding(.leading, 52)
+                        .padding(.bottom, 6)
+                    } else {
+                        HStack(spacing: 8) {
+                            accountActivityPill(
+                                title: "Spent",
+                                value: currencyString(monthSpend),
+                                accent: warmAccent
+                            )
 
-                        accountActivityPill(
-                            title: "Net",
-                            value: currencyString(monthNet),
-                            accent: monthNet >= 0 ? warmOlive : warmRose
-                        )
+                            if monthIncome > 0 {
+                                accountActivityPill(
+                                    title: "Income",
+                                    value: currencyString(monthIncome),
+                                    accent: warmGold
+                                )
+                            }
+
+                            accountActivityPill(
+                                title: "Net",
+                                value: currencyString(monthNet),
+                                accent: monthNet >= 0 ? warmOlive : warmRose
+                            )
+                        }
+                        .padding(.leading, 52)
+                        .padding(.bottom, 6)
                     }
-                    .padding(.leading, 52)
-                    .padding(.bottom, 6)
                 }
             }
         }
@@ -691,6 +801,29 @@ struct BankView: View {
         )
     }
 
+    private func allocationRow(_ slice: PortfolioAllocationSlice) -> some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(allocationAccent(for: slice.assetClass))
+                .frame(width: 8, height: 8)
+
+            Text(slice.assetClass.rawValue)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.78))
+
+            Spacer()
+
+            Text(currencyString(slice.marketValue))
+                .font(.system(size: 12, weight: .semibold, design: .serif))
+                .foregroundColor(.white)
+
+            Text(percentString(slice.percentage))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.45))
+                .frame(width: 48, alignment: .trailing)
+        }
+    }
+
     private func accountIcon(for type: AccountType) -> String {
         switch type {
         case .checking: return "banknote.fill"
@@ -713,6 +846,18 @@ struct BankView: View {
         }
     }
 
+    private func allocationAccent(for assetClass: InvestmentAssetClass) -> Color {
+        switch assetClass {
+        case .stock: return warmAccentSoft
+        case .etf: return warmGold
+        case .mutualFund: return warmCream
+        case .bond: return warmOlive
+        case .crypto: return warmAccent
+        case .cash: return .white.opacity(0.7)
+        case .alternative: return warmRose
+        }
+    }
+
     private func currencyString(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
@@ -720,6 +865,15 @@ struct BankView: View {
         formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = 2
         return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+    }
+
+    private func signedCurrencyString(_ value: Double) -> String {
+        let prefix = value >= 0 ? "+" : "-"
+        return prefix + currencyString(abs(value))
+    }
+
+    private func percentString(_ value: Double) -> String {
+        String(format: "%@%.1f%%", value >= 0 ? "+" : "-", abs(value) * 100)
     }
 
     private var backgroundGradient: some View {
@@ -1156,6 +1310,456 @@ private struct DailyBudgetEditorView: View {
         formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = 2
         return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+    }
+}
+
+private struct InvestmentAccountDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private let data = TransactionData.shared
+    private let account: Account
+    private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
+    private let warmGold = Color(red: 0.98, green: 0.74, blue: 0.34)
+    private let warmOlive = Color(red: 0.67, green: 0.73, blue: 0.42)
+    private let warmRose = Color(red: 0.86, green: 0.53, blue: 0.42)
+
+    @State private var editingHolding: InvestmentHolding?
+    @State private var showAddHolding = false
+
+    init(account: Account) {
+        self.account = account
+    }
+
+    private var holdings: [InvestmentHolding] {
+        data.holdings(forAccount: account.id)
+    }
+
+    private var summary: InvestmentPerformanceSummary {
+        data.investmentPerformance(forAccount: account.id)
+    }
+
+    private var allocation: [PortfolioAllocationSlice] {
+        data.portfolioAllocation(forAccount: account.id)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                PennyWarmBackground()
+
+                ScrollView {
+                    VStack(spacing: 18) {
+                        summaryCard
+                        allocationCard
+                        holdingsCard
+                    }
+                    .padding(20)
+                    .padding(.bottom, 120)
+                }
+            }
+            .navigationTitle(account.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") { dismiss() }
+                        .foregroundColor(.white.opacity(0.7))
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Add Holding") { showAddHolding = true }
+                        .foregroundColor(warmAccent)
+                }
+            }
+        }
+        .sheet(isPresented: $showAddHolding) {
+            InvestmentHoldingEditorView(account: account)
+                .presentationCornerRadius(28)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $editingHolding) { holding in
+            InvestmentHoldingEditorView(account: account, holding: holding)
+                .presentationCornerRadius(28)
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("PORTFOLIO")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+
+            Text(currencyString(summary.marketValue))
+                .font(.system(size: 38, weight: .light, design: .serif))
+                .foregroundColor(.white)
+
+            HStack(spacing: 10) {
+                detailChip(title: "Cost Basis", value: currencyString(summary.costBasis), accent: warmGold)
+                detailChip(title: "Gain / Loss", value: signedCurrencyString(summary.gainLoss), accent: summary.gainLoss >= 0 ? warmOlive : warmRose)
+            }
+
+            HStack(spacing: 10) {
+                detailChip(title: "Return", value: percentString(summary.gainLossPercent), accent: summary.gainLossPercent >= 0 ? warmOlive : warmRose)
+                detailChip(title: "Holdings", value: "\(summary.holdingsCount)", accent: warmAccent)
+            }
+        }
+        .padding(20)
+        .background(cardBackground)
+    }
+
+    private var allocationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ALLOCATION")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+
+            if allocation.isEmpty {
+                Text("Add holdings to see how this account is allocated across asset classes.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            } else {
+                ForEach(allocation) { slice in
+                    HStack {
+                        Text(slice.assetClass.rawValue)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white.opacity(0.82))
+                        Spacer()
+                        Text(currencyString(slice.marketValue))
+                            .font(.system(size: 12, weight: .semibold, design: .serif))
+                            .foregroundColor(.white)
+                        Text(percentString(slice.percentage))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.45))
+                            .frame(width: 48, alignment: .trailing)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(cardBackground)
+    }
+
+    private var holdingsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("HOLDINGS")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.4))
+                Spacer()
+                Text("\(holdings.count)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.55))
+            }
+
+            if holdings.isEmpty {
+                Text("No holdings yet. Add your first position to track performance for this investment account.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            } else {
+                ForEach(holdings) { holding in
+                    Button {
+                        editingHolding = holding
+                    } label: {
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(Color.white.opacity(0.06))
+                                .frame(width: 36, height: 36)
+                                .overlay(
+                                    Text(String(holding.symbol.prefix(1)))
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundColor(.white.opacity(0.8))
+                                )
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(holding.symbol)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                                Text("\(holding.name) • \(formattedShares(holding.shares)) shares")
+                                    .font(.system(size: 11, weight: .regular))
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 3) {
+                                Text(currencyString(holding.marketValue))
+                                    .font(.system(size: 14, weight: .semibold, design: .serif))
+                                    .foregroundColor(.white)
+                                Text(signedCurrencyString(holding.gainLoss))
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(holding.gainLoss >= 0 ? warmOlive : warmRose)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button("Edit") { editingHolding = holding }
+                        Button("Delete", role: .destructive) {
+                            data.deleteInvestmentHolding(id: holding.id)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(cardBackground)
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 24)
+            .fill(Color.white.opacity(0.04))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24)
+                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            )
+    }
+
+    private func detailChip(title: String, value: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold))
+                .tracking(1.5)
+                .foregroundColor(.white.opacity(0.4))
+            Text(value)
+                .font(.system(size: 14, weight: .semibold, design: .serif))
+                .foregroundColor(.white)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(accent.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(accent.opacity(0.18), lineWidth: 1)
+                )
+        )
+    }
+
+    private func currencyString(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+    }
+
+    private func signedCurrencyString(_ value: Double) -> String {
+        let prefix = value >= 0 ? "+" : "-"
+        return prefix + currencyString(abs(value))
+    }
+
+    private func percentString(_ value: Double) -> String {
+        String(format: "%@%.1f%%", value >= 0 ? "+" : "-", abs(value) * 100)
+    }
+
+    private func formattedShares(_ shares: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 4
+        formatter.minimumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: shares)) ?? String(format: "%.4f", shares)
+    }
+}
+
+private struct InvestmentHoldingEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private let data = TransactionData.shared
+    private let account: Account
+    private let holding: InvestmentHolding?
+    private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
+
+    @State private var symbol: String
+    @State private var name: String
+    @State private var assetClass: InvestmentAssetClass
+    @State private var sharesText: String
+    @State private var averageCostText: String
+    @State private var currentPriceText: String
+
+    init(account: Account, holding: InvestmentHolding? = nil) {
+        self.account = account
+        self.holding = holding
+        _symbol = State(initialValue: holding?.symbol ?? "")
+        _name = State(initialValue: holding?.name ?? "")
+        _assetClass = State(initialValue: holding?.assetClass ?? .stock)
+        _sharesText = State(initialValue: holding.map { Self.decimalString($0.shares, places: 4) } ?? "")
+        _averageCostText = State(initialValue: holding.map { Self.decimalString($0.averageCostPerShare, places: 2) } ?? "")
+        _currentPriceText = State(initialValue: holding.map { Self.decimalString($0.currentPricePerShare, places: 2) } ?? "")
+    }
+
+    private var isValid: Bool {
+        !symbol.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        parsedNumber(from: sharesText) ?? 0 > 0 &&
+        parsedNumber(from: averageCostText) ?? 0 >= 0 &&
+        parsedNumber(from: currentPriceText) ?? 0 >= 0
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                PennyWarmBackground()
+
+                ScrollView {
+                    VStack(spacing: 18) {
+                        investmentField(title: "Ticker", text: $symbol, placeholder: "VOO", autocapitalize: true)
+                        investmentField(title: "Holding Name", text: $name, placeholder: "Vanguard S&P 500 ETF")
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("ASSET CLASS")
+                                .font(.system(size: 10, weight: .bold))
+                                .tracking(2)
+                                .foregroundColor(.white.opacity(0.4))
+
+                            Picker("", selection: $assetClass) {
+                                ForEach(InvestmentAssetClass.allCases) { assetClass in
+                                    Text(assetClass.rawValue).tag(assetClass)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color.white.opacity(0.05))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                    )
+                            )
+                        }
+
+                        investmentField(title: "Shares", text: $sharesText, placeholder: "0.0000", keyboardType: .decimalPad)
+                        investmentField(title: "Average Cost / Share", text: $averageCostText, placeholder: "0.00", keyboardType: .decimalPad)
+                        investmentField(title: "Current Price / Share", text: $currentPriceText, placeholder: "0.00", keyboardType: .decimalPad)
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle(holding == nil ? "Add Holding" : "Edit Holding")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(.white.opacity(0.7))
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") { saveHolding() }
+                        .foregroundColor(isValid ? warmAccent : .white.opacity(0.3))
+                        .disabled(!isValid)
+                }
+            }
+        }
+    }
+
+    private func investmentField(
+        title: String,
+        text: Binding<String>,
+        placeholder: String,
+        keyboardType: UIKeyboardType = .default,
+        autocapitalize: Bool = false
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .tracking(2)
+                .foregroundColor(.white.opacity(0.4))
+
+            TextField(placeholder, text: text)
+                .keyboardType(keyboardType)
+                .textInputAutocapitalization(autocapitalize ? .characters : .never)
+                .autocorrectionDisabled()
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 50)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color.white.opacity(0.05))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+                .onChange(of: text.wrappedValue) { _, newValue in
+                    guard keyboardType == .decimalPad else { return }
+                    let formatted = Self.formattedAmountInput(newValue, maxFractionDigits: title == "Shares" ? 4 : 2)
+                    if formatted != newValue {
+                        text.wrappedValue = formatted
+                    }
+                }
+        }
+    }
+
+    private func saveHolding() {
+        guard
+            let shares = parsedNumber(from: sharesText), shares > 0,
+            let averageCost = parsedNumber(from: averageCostText),
+            let currentPrice = parsedNumber(from: currentPriceText)
+        else { return }
+
+        data.upsertInvestmentHolding(
+            InvestmentHolding(
+                id: holding?.id ?? UUID(),
+                accountId: account.id,
+                symbol: symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                assetClass: assetClass,
+                shares: shares,
+                averageCostPerShare: averageCost,
+                currentPricePerShare: currentPrice,
+                lastUpdated: Date()
+            )
+        )
+        dismiss()
+    }
+
+    private func parsedNumber(from input: String) -> Double? {
+        Double(input.replacingOccurrences(of: ",", with: ""))
+    }
+
+    private static func decimalString(_ value: Double, places: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = places
+        formatter.minimumFractionDigits = min(2, places)
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    private static func formattedAmountInput(_ input: String, maxFractionDigits: Int) -> String {
+        let filtered = input.filter { "0123456789.,".contains($0) }
+        let normalized = filtered.replacingOccurrences(of: ",", with: "")
+        let parts = normalized.split(separator: ".", omittingEmptySubsequences: false)
+
+        let integerDigits = String(parts.first ?? "")
+        let hasDecimal = normalized.contains(".")
+        let rawFraction = parts.count > 1 ? String(parts[1]) : ""
+        let fractionDigits = String(rawFraction.prefix(maxFractionDigits))
+
+        let integerNumber = Double(integerDigits.isEmpty ? "0" : integerDigits) ?? 0
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = ","
+        formatter.maximumFractionDigits = 0
+        let groupedInteger = formatter.string(from: NSNumber(value: integerNumber)) ?? integerDigits
+
+        if hasDecimal {
+            return groupedInteger + "." + fractionDigits
+        }
+
+        if integerDigits.isEmpty {
+            return ""
+        }
+
+        return groupedInteger
     }
 }
 

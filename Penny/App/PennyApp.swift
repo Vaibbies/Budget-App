@@ -4,10 +4,17 @@ import SwiftUI
 struct PennyApp: App {
     @State private var data = TransactionData.shared
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
+    @AppStorage(TransactionData.hasCompletedOnboardingKey) private var hasCompletedOnboarding = false
     
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            Group {
+                if hasCompletedOnboarding {
+                    RootTabView()
+                } else {
+                    AppModeOnboardingView()
+                }
+            }
                 .environment(data)
                 .environment(\.locale, Locale(identifier: currentLocaleIdentifier))
         }

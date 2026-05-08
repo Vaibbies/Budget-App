@@ -24,7 +24,7 @@ struct SpendingHomeView: View {
     @State private var showCashFlow = false
     @State private var selectedTrendPeriod: TrendPeriod = .weekly
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
-    @AppStorage("penny.profile.name") private var storedProfileName: String = "Alex Rivers"
+    @AppStorage("penny.profile.name") private var storedProfileName: String = ""
             
     @Environment(TransactionData.self) private var data
 
@@ -34,6 +34,7 @@ struct SpendingHomeView: View {
         if hour < 12 { dayGreeting = language.text(.goodMorning) }
         else if hour < 17 { dayGreeting = language.text(.goodAfternoon) }
         else { dayGreeting = language.text(.goodEvening) }
+        guard let firstName else { return dayGreeting }
         return "\(dayGreeting), \(firstName)"
     }
 
@@ -43,10 +44,12 @@ struct SpendingHomeView: View {
         return f.string(from: Date())
     }
 
-    private var firstName: String {
+    private var firstName: String? {
         let trimmed = storedProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rawFirst = trimmed.split(separator: " ").first.map(String.init) ?? "Alex"
-        return rawFirst.isEmpty ? "Alex" : rawFirst
+        guard let rawFirst = trimmed.split(separator: " ").first.map(String.init), !rawFirst.isEmpty else {
+            return nil
+        }
+        return rawFirst
     }
 
     private var language: AppLanguage {

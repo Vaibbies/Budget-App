@@ -123,9 +123,28 @@ enum AccountType: String, CaseIterable, Codable {
     case cash = "Cash"
 }
 
+enum InvestmentAssetClass: String, CaseIterable, Codable, Identifiable {
+    case stock = "Stock"
+    case etf = "ETF"
+    case mutualFund = "Mutual Fund"
+    case bond = "Bond"
+    case crypto = "Crypto"
+    case cash = "Cash"
+    case alternative = "Alternative"
+
+    var id: String { rawValue }
+}
+
 enum BudgetMode: String, CaseIterable, Codable {
     case daily = "Daily"
     case monthly = "Monthly"
+}
+
+enum AppDataMode: String, CaseIterable, Codable, Identifiable {
+    case demo = "Demo"
+    case real = "Real"
+
+    var id: String { rawValue }
 }
 
 enum RecurringStatus: String, CaseIterable, Codable, Identifiable {
@@ -234,6 +253,72 @@ struct Account: Identifiable, Codable {
     }
 }
 
+struct InvestmentHolding: Identifiable, Codable {
+    let id: UUID
+    let accountId: UUID
+    var symbol: String
+    var name: String
+    var assetClass: InvestmentAssetClass
+    var shares: Double
+    var averageCostPerShare: Double
+    var currentPricePerShare: Double
+    var lastUpdated: Date
+
+    init(
+        id: UUID = UUID(),
+        accountId: UUID,
+        symbol: String,
+        name: String,
+        assetClass: InvestmentAssetClass,
+        shares: Double,
+        averageCostPerShare: Double,
+        currentPricePerShare: Double,
+        lastUpdated: Date = Date()
+    ) {
+        self.id = id
+        self.accountId = accountId
+        self.symbol = symbol
+        self.name = name
+        self.assetClass = assetClass
+        self.shares = shares
+        self.averageCostPerShare = averageCostPerShare
+        self.currentPricePerShare = currentPricePerShare
+        self.lastUpdated = lastUpdated
+    }
+
+    var marketValue: Double {
+        shares * currentPricePerShare
+    }
+
+    var costBasis: Double {
+        shares * averageCostPerShare
+    }
+
+    var gainLoss: Double {
+        marketValue - costBasis
+    }
+
+    var gainLossPercent: Double {
+        guard costBasis != 0 else { return 0 }
+        return gainLoss / costBasis
+    }
+}
+
+struct PortfolioAllocationSlice: Identifiable {
+    let id = UUID()
+    let assetClass: InvestmentAssetClass
+    let marketValue: Double
+    let percentage: Double
+}
+
+struct InvestmentPerformanceSummary {
+    let marketValue: Double
+    let costBasis: Double
+    let gainLoss: Double
+    let gainLossPercent: Double
+    let holdingsCount: Int
+}
+
 struct BudgetCategory: Identifiable, Codable {
     let id: UUID
     let category: SpendingCategory
@@ -300,6 +385,33 @@ struct SavingsGoal: Identifiable, Codable {
         self.currentAmount = currentAmount
         self.linkedAccountId = linkedAccountId
         self.linkedCategory = linkedCategory
+    }
+}
+
+struct TransactionAttachment: Identifiable, Codable, Equatable {
+    enum Kind: String, Codable {
+        case image
+        case document
+    }
+
+    let id: UUID
+    let fileName: String
+    let storedFileName: String
+    let kind: Kind
+    let addedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        fileName: String,
+        storedFileName: String,
+        kind: Kind,
+        addedAt: Date = Date()
+    ) {
+        self.id = id
+        self.fileName = fileName
+        self.storedFileName = storedFileName
+        self.kind = kind
+        self.addedAt = addedAt
     }
 }
 
@@ -383,6 +495,7 @@ struct SpendingTransaction: Identifiable, Codable {
     let merchantNormalized: String?
     let notes: String?
     let tags: [String]
+    let attachments: [TransactionAttachment]
     let isExcludedFromBudget: Bool
     let isRecurringCandidate: Bool
     let splitGroupId: UUID?
@@ -400,6 +513,7 @@ struct SpendingTransaction: Identifiable, Codable {
         merchantNormalized: String? = nil,
         notes: String? = nil,
         tags: [String] = [],
+        attachments: [TransactionAttachment] = [],
         isExcludedFromBudget: Bool = false,
         isRecurringCandidate: Bool = false,
         splitGroupId: UUID? = nil,
@@ -422,6 +536,7 @@ struct SpendingTransaction: Identifiable, Codable {
         self.merchantNormalized = merchantNormalized ?? title
         self.notes = notes
         self.tags = tags
+        self.attachments = attachments
         self.isExcludedFromBudget = isExcludedFromBudget
         self.isRecurringCandidate = isRecurringCandidate
         self.splitGroupId = splitGroupId
@@ -431,7 +546,7 @@ struct SpendingTransaction: Identifiable, Codable {
     enum CodingKeys: String, CodingKey {
         case id, icon, title, subtitle, time, amount, isImpulse
         case iconColorHex, bgColorHex, borderColorHex, category
-        case accountId, kind, merchantRaw, merchantNormalized, notes, tags
+        case accountId, kind, merchantRaw, merchantNormalized, notes, tags, attachments
         case isExcludedFromBudget, isRecurringCandidate
         case splitGroupId, splitLabel
     }
@@ -455,6 +570,7 @@ struct SpendingTransaction: Identifiable, Codable {
         merchantNormalized = try container.decodeIfPresent(String.self, forKey: .merchantNormalized) ?? title
         notes = try container.decodeIfPresent(String.self, forKey: .notes)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        attachments = try container.decodeIfPresent([TransactionAttachment].self, forKey: .attachments) ?? []
         isExcludedFromBudget = try container.decodeIfPresent(Bool.self, forKey: .isExcludedFromBudget) ?? false
         isRecurringCandidate = try container.decodeIfPresent(Bool.self, forKey: .isRecurringCandidate) ?? false
         splitGroupId = try container.decodeIfPresent(UUID.self, forKey: .splitGroupId)
@@ -620,6 +736,9 @@ private extension String {
 class TransactionData {
     static let shared = TransactionData()
 
+    static let appModeKey = "penny.app.mode"
+    static let hasCompletedOnboardingKey = "penny.app.didCompleteOnboarding"
+
     private let groupsKey = "penny_transaction_groups"
     private let budgetModeKey = "penny_budget_mode"
     private let budgetValueKey = "penny_budget_value"
@@ -627,6 +746,7 @@ class TransactionData {
     private let legacyMonthlyBudgetKey = "penny_monthly_budget"
     private let subscriptionsKey = "penny_recurring_subscriptions"
     private let accountsKey = "penny_accounts"
+    private let investmentHoldingsKey = "penny_investment_holdings"
     private let merchantRulesKey = "penny_merchant_rules"
     private let manualForecastItemsKey = "penny_manual_forecast_items"
     private let manualV1ResetKey = "penny_manual_v1_reset_complete"
@@ -634,8 +754,15 @@ class TransactionData {
     private var isNormalizingGroups = false
     private var isSyncingRecurring = false
 
+    var appMode: AppDataMode {
+        didSet { UserDefaults.standard.set(appMode.rawValue, forKey: Self.appModeKey) }
+    }
+
     var accounts: [Account] {
         didSet { saveAccounts() }
+    }
+    var investmentHoldings: [InvestmentHolding] {
+        didSet { saveInvestmentHoldings() }
     }
     var budgetCategories: [BudgetCategory]
     var merchantRules: [MerchantRule] {
@@ -689,6 +816,7 @@ class TransactionData {
         let savedBudgetValue = defaults.double(forKey: budgetValueKey)
         let legacyDailyBudget = defaults.double(forKey: legacyDailyBudgetKey)
         let legacyMonthlyBudget = defaults.double(forKey: legacyMonthlyBudgetKey)
+        self.appMode = defaults.string(forKey: Self.appModeKey).flatMap(AppDataMode.init(rawValue:)) ?? .real
 
         if let savedBudgetMode, savedBudgetValue > 0 {
             self.budgetMode = savedBudgetMode
@@ -709,14 +837,20 @@ class TransactionData {
         } else {
             self.accounts = []
         }
-        self.budgetCategories = TransactionData.sampleBudgetCategories
+        if let data = defaults.data(forKey: investmentHoldingsKey),
+           let decoded = try? JSONDecoder().decode([InvestmentHolding].self, from: data) {
+            self.investmentHoldings = decoded
+        } else {
+            self.investmentHoldings = []
+        }
+        self.budgetCategories = TransactionData.emptyBudgetCategories
         if let data = defaults.data(forKey: merchantRulesKey),
            let decoded = try? JSONDecoder().decode([MerchantRule].self, from: data) {
             self.merchantRules = decoded
         } else {
             self.merchantRules = TransactionData.sampleMerchantRules
         }
-        self.savingsGoals = TransactionData.sampleSavingsGoals
+        self.savingsGoals = []
 
         let loadedGroups: [SpendingTransactionGroup]
         if let data = defaults.data(forKey: groupsKey),
@@ -750,6 +884,10 @@ class TransactionData {
                 title: group.title,
                 transactions: group.transactions.map { normalizeAndApplyRules(to: $0) }
             )
+        }
+
+        if appMode == .demo && groups.isEmpty && accounts.isEmpty && subscriptions.isEmpty && investmentHoldings.isEmpty {
+            loadDemoMode()
         }
 
         syncRecurringTransactions()
@@ -807,6 +945,12 @@ class TransactionData {
         }
     }
 
+    private func saveInvestmentHoldings() {
+        if let encoded = try? JSONEncoder().encode(investmentHoldings) {
+            UserDefaults.standard.set(encoded, forKey: investmentHoldingsKey)
+        }
+    }
+
     private func saveManualForecastItems() {
         if let encoded = try? JSONEncoder().encode(manualForecastItems.sorted { $0.date < $1.date }) {
             UserDefaults.standard.set(encoded, forKey: manualForecastItemsKey)
@@ -856,6 +1000,7 @@ class TransactionData {
             merchantNormalized: matchedRule.merchantDisplayName ?? normalizeMerchant(transaction.merchantRaw ?? transaction.title),
             notes: transaction.notes,
             tags: transaction.tags,
+            attachments: transaction.attachments,
             isExcludedFromBudget: transaction.isExcludedFromBudget,
             isRecurringCandidate: transaction.isRecurringCandidate || matchedRule.recurringHint,
             splitGroupId: transaction.splitGroupId,
@@ -883,6 +1028,7 @@ class TransactionData {
             merchantNormalized: normalizedMerchant,
             notes: transaction.notes,
             tags: transaction.tags,
+            attachments: transaction.attachments,
             isExcludedFromBudget: transaction.isExcludedFromBudget,
             isRecurringCandidate: transaction.isRecurringCandidate || detectRecurringCandidate(for: normalizedMerchant),
             splitGroupId: transaction.splitGroupId,
@@ -1259,6 +1405,7 @@ class TransactionData {
                 merchantNormalized: normalizeMerchant(rawTitle),
                 notes: notes,
                 tags: Array(Set(transaction.tags + ["split"])).sorted(),
+                attachments: transaction.attachments,
                 isExcludedFromBudget: transaction.isExcludedFromBudget,
                 isRecurringCandidate: transaction.isRecurringCandidate,
                 splitGroupId: splitGroupId,
@@ -1303,6 +1450,7 @@ class TransactionData {
                 merchantNormalized: normalizeMerchant(rawTitle),
                 notes: notes,
                 tags: ["split"],
+                attachments: [],
                 splitGroupId: splitGroupId,
                 splitLabel: allocation.label.nilIfEmpty
             ))
@@ -1313,6 +1461,82 @@ class TransactionData {
 
     func splitTransactions(for splitGroupId: UUID) -> [SpendingTransaction] {
         allTransactions.filter { $0.splitGroupId == splitGroupId }
+    }
+
+    func transaction(for id: UUID) -> SpendingTransaction? {
+        allTransactions.first(where: { $0.id == id })
+    }
+
+    func updateTransactionDetails(
+        transactionId: UUID,
+        notes: String?,
+        tags: [String],
+        isImpulse: Bool,
+        attachments: [TransactionAttachment]
+    ) {
+        guard let transaction = transaction(for: transactionId) else { return }
+
+        let normalizedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let normalizedTags = Array(
+            Set(
+                tags
+                    .map {
+                        $0
+                            .replacingOccurrences(of: "#", with: "")
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    .filter { !$0.isEmpty }
+            )
+        ).sorted()
+
+        let targetIds: Set<UUID>
+        if let splitGroupId = transaction.splitGroupId {
+            targetIds = Set(splitTransactions(for: splitGroupId).map(\.id))
+        } else {
+            targetIds = [transactionId]
+        }
+
+        for groupIndex in groups.indices {
+            var updatedTransactions = groups[groupIndex].transactions
+            var didChange = false
+
+            for txIndex in updatedTransactions.indices where targetIds.contains(updatedTransactions[txIndex].id) {
+                let existing = updatedTransactions[txIndex]
+                updatedTransactions[txIndex] = SpendingTransaction(
+                    id: existing.id,
+                    icon: existing.icon,
+                    title: existing.title,
+                    subtitle: existing.subtitle,
+                    time: existing.time,
+                    amount: existing.amount,
+                    isImpulse: existing.kind.usesImpulseFlag ? isImpulse : false,
+                    iconColor: existing.iconColor,
+                    bgColor: existing.bgColor,
+                    borderColor: existing.borderColor,
+                    category: existing.category,
+                    accountId: existing.accountId,
+                    kind: existing.kind,
+                    merchantRaw: existing.merchantRaw,
+                    merchantNormalized: existing.merchantNormalized,
+                    notes: normalizedNotes,
+                    tags: normalizedTags,
+                    attachments: attachments,
+                    isExcludedFromBudget: existing.isExcludedFromBudget,
+                    isRecurringCandidate: existing.isRecurringCandidate,
+                    splitGroupId: existing.splitGroupId,
+                    splitLabel: existing.splitLabel
+                )
+                didChange = true
+            }
+
+            if didChange {
+                groups[groupIndex] = SpendingTransactionGroup(
+                    id: groups[groupIndex].id,
+                    title: groups[groupIndex].title,
+                    transactions: updatedTransactions
+                )
+            }
+        }
     }
 
     func isDuplicateTransaction(
@@ -1691,6 +1915,73 @@ class TransactionData {
         ?? accounts.first
     }
 
+    func holdings(forAccount accountId: UUID) -> [InvestmentHolding] {
+        investmentHoldings
+            .filter { $0.accountId == accountId }
+            .sorted { lhs, rhs in
+                if lhs.marketValue != rhs.marketValue {
+                    return lhs.marketValue > rhs.marketValue
+                }
+                return lhs.symbol < rhs.symbol
+            }
+    }
+
+    func investmentPerformance(forAccount accountId: UUID? = nil) -> InvestmentPerformanceSummary {
+        let scopedHoldings: [InvestmentHolding]
+        if let accountId {
+            scopedHoldings = holdings(forAccount: accountId)
+        } else {
+            scopedHoldings = investmentHoldings
+        }
+
+        let marketValue = scopedHoldings.reduce(0) { $0 + $1.marketValue }
+        let costBasis = scopedHoldings.reduce(0) { $0 + $1.costBasis }
+        let gainLoss = marketValue - costBasis
+        let gainLossPercent = costBasis == 0 ? 0 : gainLoss / costBasis
+
+        return InvestmentPerformanceSummary(
+            marketValue: marketValue,
+            costBasis: costBasis,
+            gainLoss: gainLoss,
+            gainLossPercent: gainLossPercent,
+            holdingsCount: scopedHoldings.count
+        )
+    }
+
+    func portfolioAllocation(forAccount accountId: UUID? = nil) -> [PortfolioAllocationSlice] {
+        let scopedHoldings: [InvestmentHolding]
+        if let accountId {
+            scopedHoldings = holdings(forAccount: accountId)
+        } else {
+            scopedHoldings = investmentHoldings
+        }
+
+        let total = scopedHoldings.reduce(0) { $0 + $1.marketValue }
+        guard total > 0 else { return [] }
+
+        let grouped = Dictionary(grouping: scopedHoldings, by: \.assetClass)
+        return grouped
+            .map { assetClass, holdings in
+                let marketValue = holdings.reduce(0) { $0 + $1.marketValue }
+                return PortfolioAllocationSlice(
+                    assetClass: assetClass,
+                    marketValue: marketValue,
+                    percentage: marketValue / total
+                )
+            }
+            .sorted { $0.marketValue > $1.marketValue }
+    }
+
+    func effectiveBalance(for account: Account) -> Double {
+        guard account.type == .investment else { return account.balance }
+        let performance = investmentPerformance(forAccount: account.id)
+        return performance.holdingsCount > 0 ? performance.marketValue : account.balance
+    }
+
+    var investmentAccounts: [Account] {
+        visibleAccounts.filter { $0.type == .investment }
+    }
+
     func account(for id: UUID?) -> Account? {
         guard let id else { return nil }
         return accounts.first(where: { $0.id == id })
@@ -1727,31 +2018,36 @@ class TransactionData {
     var liquidCashBalance: Double {
         visibleAccounts
             .filter { $0.type == .checking || $0.type == .savings || $0.type == .cash }
-            .reduce(0) { $0 + $1.balance }
+            .reduce(0) { $0 + effectiveBalance(for: $1) }
     }
 
     var investedBalance: Double {
-        visibleAccounts
+        let holdingsBacked = investmentPerformance().marketValue
+        if holdingsBacked > 0 {
+            return holdingsBacked
+        }
+
+        return visibleAccounts
             .filter { $0.type == .investment }
-            .reduce(0) { $0 + $1.balance }
+            .reduce(0) { $0 + effectiveBalance(for: $1) }
     }
 
     var totalDebtBalance: Double {
         visibleAccounts
             .filter { $0.type == .creditCard || $0.type == .loan }
-            .reduce(0) { $0 + abs($1.balance) }
+            .reduce(0) { $0 + abs(effectiveBalance(for: $1)) }
     }
 
     var totalAssetsBalance: Double {
         visibleAccounts
-            .filter { $0.balance >= 0 }
-            .reduce(0) { $0 + $1.balance }
+            .filter { effectiveBalance(for: $0) >= 0 }
+            .reduce(0) { $0 + effectiveBalance(for: $1) }
     }
 
     var totalLiabilitiesBalance: Double {
         visibleAccounts
-            .filter { $0.balance < 0 }
-            .reduce(0) { $0 + abs($1.balance) }
+            .filter { effectiveBalance(for: $0) < 0 }
+            .reduce(0) { $0 + abs(effectiveBalance(for: $1)) }
     }
 
     var netWorthBalance: Double {
@@ -1804,6 +2100,33 @@ class TransactionData {
 
     private func transactionDate(for transaction: SpendingTransaction, referenceDate: Date = Date()) -> Date? {
         Self.resolvedDate(forGroupTitle: groupTitle(for: transaction.id), now: referenceDate)
+    }
+
+    func groupTitle(forTransactionId transactionId: UUID) -> String? {
+        groups.first(where: { group in
+            group.transactions.contains(where: { $0.id == transactionId })
+        })?.title
+    }
+
+    func date(forTransactionId transactionId: UUID, referenceDate: Date = Date()) -> Date? {
+        guard let title = groupTitle(forTransactionId: transactionId) else { return nil }
+        return Self.resolvedDate(forGroupTitle: title, now: referenceDate)
+    }
+
+    func merchantHistory(for transaction: SpendingTransaction, limit: Int = 8) -> [SpendingTransaction] {
+        let merchantKey = transaction.merchantNormalized ?? normalizeMerchant(transaction.merchantRaw ?? transaction.title)
+        return allTransactions
+            .filter { candidate in
+                candidate.id != transaction.id &&
+                (candidate.merchantNormalized ?? normalizeMerchant(candidate.merchantRaw ?? candidate.title)) == merchantKey
+            }
+            .sorted {
+                let lhs = date(forTransactionId: $0.id) ?? .distantPast
+                let rhs = date(forTransactionId: $1.id) ?? .distantPast
+                return lhs > rhs
+            }
+            .prefix(limit)
+            .map { $0 }
     }
 
     var totalSpent: Double {
@@ -2034,7 +2357,20 @@ class TransactionData {
 
     func deleteAccount(id: UUID) {
         accounts.removeAll { $0.id == id }
+        investmentHoldings.removeAll { $0.accountId == id }
         saveAccounts()
+    }
+
+    func upsertInvestmentHolding(_ holding: InvestmentHolding) {
+        if let index = investmentHoldings.firstIndex(where: { $0.id == holding.id }) {
+            investmentHoldings[index] = holding
+        } else {
+            investmentHoldings.append(holding)
+        }
+    }
+
+    func deleteInvestmentHolding(id: UUID) {
+        investmentHoldings.removeAll { $0.id == id }
     }
 
     func normalizedBalance(for type: AccountType, enteredBalance: Double) -> Double {
@@ -2044,6 +2380,44 @@ class TransactionData {
         case .checking, .savings, .investment, .cash:
             return enteredBalance
         }
+    }
+
+    func activateMode(_ mode: AppDataMode) {
+        appMode = mode
+        UserDefaults.standard.set(true, forKey: Self.hasCompletedOnboardingKey)
+
+        switch mode {
+        case .demo:
+            loadDemoMode()
+        case .real:
+            loadRealMode()
+        }
+    }
+
+    private func loadDemoMode() {
+        budgetMode = .monthly
+        budgetBaseValue = 4650
+        accounts = Self.sampleAccounts
+        investmentHoldings = Self.sampleInvestmentHoldings
+        budgetCategories = Self.sampleBudgetCategories
+        savingsGoals = Self.sampleSavingsGoals
+        merchantRules = Self.sampleMerchantRules
+        groups = Self.sampleGroups
+        subscriptions = Self.sampleSubscriptions
+        manualForecastItems = Self.sampleManualForecastItems
+    }
+
+    private func loadRealMode() {
+        budgetMode = .daily
+        budgetBaseValue = 0
+        accounts = []
+        investmentHoldings = []
+        budgetCategories = Self.emptyBudgetCategories
+        savingsGoals = []
+        merchantRules = Self.sampleMerchantRules
+        groups = []
+        subscriptions = []
+        manualForecastItems = []
     }
 
     // MARK: - Sample Data
@@ -2083,9 +2457,45 @@ class TransactionData {
         SeedTemplate(title: "ClassPass", subtitle: "Fitness", icon: "figure.run", category: .fitness, amountRange: 39...109, canBeImpulse: false, canAutoPay: true),
     ]
 
-    static var sampleAccounts: [Account] { [] }
+    private static let demoCheckingId = UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa") ?? UUID()
+    private static let demoSavingsId = UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb") ?? UUID()
+    private static let demoCreditId = UUID(uuidString: "cccccccc-cccc-cccc-cccc-cccccccccccc") ?? UUID()
+    private static let demoInvestmentId = UUID(uuidString: "dddddddd-dddd-dddd-dddd-dddddddddddd") ?? UUID()
 
-    static var sampleBudgetCategories: [BudgetCategory] = [
+    static var sampleAccounts: [Account] {
+        [
+            Account(
+                id: demoCheckingId,
+                name: "Everyday Checking",
+                type: .checking,
+                institution: "Chase",
+                balance: 4215.48
+            ),
+            Account(
+                id: demoSavingsId,
+                name: "Rainy Day Savings",
+                type: .savings,
+                institution: "Ally",
+                balance: 12840.12
+            ),
+            Account(
+                id: demoCreditId,
+                name: "Freedom Unlimited",
+                type: .creditCard,
+                institution: "Chase",
+                balance: -874.33
+            ),
+            Account(
+                id: demoInvestmentId,
+                name: "Brokerage",
+                type: .investment,
+                institution: "Fidelity",
+                balance: 0
+            ),
+        ]
+    }
+
+    static var emptyBudgetCategories: [BudgetCategory] = [
         BudgetCategory(category: .dining, monthlyBudget: 0),
         BudgetCategory(category: .transport, monthlyBudget: 0),
         BudgetCategory(category: .shopping, monthlyBudget: 0),
@@ -2098,6 +2508,19 @@ class TransactionData {
         BudgetCategory(category: .other, monthlyBudget: 0),
     ]
 
+    static var sampleBudgetCategories: [BudgetCategory] = [
+        BudgetCategory(category: .dining, monthlyBudget: 700),
+        BudgetCategory(category: .transport, monthlyBudget: 420),
+        BudgetCategory(category: .shopping, monthlyBudget: 650),
+        BudgetCategory(category: .entertainment, monthlyBudget: 240),
+        BudgetCategory(category: .groceries, monthlyBudget: 820),
+        BudgetCategory(category: .utilities, monthlyBudget: 310),
+        BudgetCategory(category: .fitness, monthlyBudget: 160),
+        BudgetCategory(category: .subscriptions, monthlyBudget: 95),
+        BudgetCategory(category: .lifestyle, monthlyBudget: 540),
+        BudgetCategory(category: .other, monthlyBudget: 715),
+    ]
+
     static var sampleMerchantRules: [MerchantRule] = [
         MerchantRule(matchPattern: "spotify", categoryOverride: .subscriptions, merchantDisplayName: "Spotify", recurringHint: true),
         MerchantRule(matchPattern: "netflix", categoryOverride: .subscriptions, merchantDisplayName: "Netflix", recurringHint: true),
@@ -2107,11 +2530,77 @@ class TransactionData {
     ]
 
     static var sampleSavingsGoals: [SavingsGoal] {
-        []
+        [
+            SavingsGoal(
+                name: "Tokyo Trip",
+                targetAmount: 6000,
+                currentAmount: 2450,
+                linkedAccountId: demoSavingsId
+            ),
+            SavingsGoal(
+                name: "Emergency Fund",
+                targetAmount: 15000,
+                currentAmount: 12840.12,
+                linkedAccountId: demoSavingsId
+            ),
+        ]
     }
 
     static var sampleGroups: [SpendingTransactionGroup] {
-        []
+        generateInitialGroups()
+    }
+
+    static var sampleInvestmentHoldings: [InvestmentHolding] {
+        [
+            InvestmentHolding(
+                accountId: demoInvestmentId,
+                symbol: "VOO",
+                name: "Vanguard S&P 500 ETF",
+                assetClass: .etf,
+                shares: 18.2,
+                averageCostPerShare: 470.15,
+                currentPricePerShare: 505.40
+            ),
+            InvestmentHolding(
+                accountId: demoInvestmentId,
+                symbol: "AAPL",
+                name: "Apple",
+                assetClass: .stock,
+                shares: 11,
+                averageCostPerShare: 181.22,
+                currentPricePerShare: 196.85
+            ),
+            InvestmentHolding(
+                accountId: demoInvestmentId,
+                symbol: "VXUS",
+                name: "Vanguard Total International Stock ETF",
+                assetClass: .etf,
+                shares: 24.4,
+                averageCostPerShare: 58.32,
+                currentPricePerShare: 62.14
+            ),
+        ]
+    }
+
+    static var sampleManualForecastItems: [ManualForecastItem] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return [
+            ManualForecastItem(
+                title: "Freelance Deposit",
+                amount: 1200,
+                date: calendar.date(byAdding: .day, value: 4, to: today) ?? today,
+                kind: .income,
+                note: "Design retainer"
+            ),
+            ManualForecastItem(
+                title: "Quarterly Insurance",
+                amount: 280,
+                date: calendar.date(byAdding: .day, value: 9, to: today) ?? today,
+                kind: .bill,
+                note: "Car insurance"
+            ),
+        ]
     }
 
     private static func generateInitialGroups(days: Int = 21) -> [SpendingTransactionGroup] {
@@ -2153,7 +2642,7 @@ class TransactionData {
                     bgColor: categoryColor.opacity(0.10),
                     borderColor: categoryColor.opacity(0.20),
                     category: template.category,
-                    accountId: sampleAccounts.first?.id,
+                    accountId: demoCheckingId,
                     kind: .spending,
                     merchantRaw: template.title,
                     merchantNormalized: template.title,
@@ -2201,12 +2690,18 @@ class TransactionData {
     }
 
     // Keeping this here is fine, but it is no longer used for default seeding
-    static var sampleSubscriptions: [RecurringSubscription] = [
-        RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: "May 12", merchantMatchPattern: "Netflix", expectedAmountMin: 18.99, expectedAmountMax: 21.99),
-        RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: "May 15", merchantMatchPattern: "Spotify", expectedAmountMin: 9.99, expectedAmountMax: 12.99),
-        RecurringSubscription(name: "Notion", plan: nil, price: 8.00, iconName: "notion", iconColor: .black, bgColor: .white, nextBilling: "May 18", merchantMatchPattern: "Notion", expectedAmountMin: 8.00, expectedAmountMax: 8.00),
-        RecurringSubscription(name: "YouTube", plan: "Premium", price: 13.99, iconName: "youtube", iconColor: .white, bgColor: Color(red: 1.0, green: 0.0, blue: 0.0), nextBilling: "May 20", merchantMatchPattern: "YouTube", expectedAmountMin: 12.99, expectedAmountMax: 14.99),
-        RecurringSubscription(name: "Equinox", plan: "Monthly", price: 95.00, iconName: "dumbbell.fill", iconColor: .white, bgColor: Color(red: 0.1, green: 0.1, blue: 0.1), nextBilling: "May 1", merchantMatchPattern: "Equinox", expectedAmountMin: 95.00, expectedAmountMax: 95.00),
-        RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: "May 5", merchantMatchPattern: "iCloud", expectedAmountMin: 2.99, expectedAmountMax: 2.99),
-    ]
+    static var sampleSubscriptions: [RecurringSubscription] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let dates = [5, 8, 12, 16, 21, 25].map { calendar.date(byAdding: .day, value: $0, to: today) ?? today }
+
+        return [
+            RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: billingDisplayString(for: dates[0]), frequencyKey: "monthly", nextBillingEpoch: dates[0].timeIntervalSince1970, merchantMatchPattern: "Netflix", expectedAmountMin: 18.99, expectedAmountMax: 21.99),
+            RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: billingDisplayString(for: dates[1]), frequencyKey: "monthly", nextBillingEpoch: dates[1].timeIntervalSince1970, merchantMatchPattern: "Spotify", expectedAmountMin: 9.99, expectedAmountMax: 12.99),
+            RecurringSubscription(name: "Notion", plan: nil, price: 8.00, iconName: "notion", iconColor: .black, bgColor: .white, nextBilling: billingDisplayString(for: dates[2]), frequencyKey: "monthly", nextBillingEpoch: dates[2].timeIntervalSince1970, merchantMatchPattern: "Notion", expectedAmountMin: 8.00, expectedAmountMax: 8.00),
+            RecurringSubscription(name: "YouTube", plan: "Premium", price: 13.99, iconName: "youtube", iconColor: .white, bgColor: Color(red: 1.0, green: 0.0, blue: 0.0), nextBilling: billingDisplayString(for: dates[3]), frequencyKey: "monthly", nextBillingEpoch: dates[3].timeIntervalSince1970, merchantMatchPattern: "YouTube", expectedAmountMin: 12.99, expectedAmountMax: 14.99),
+            RecurringSubscription(name: "Equinox", plan: "Monthly", price: 95.00, iconName: "dumbbell.fill", iconColor: .white, bgColor: Color(red: 0.1, green: 0.1, blue: 0.1), nextBilling: billingDisplayString(for: dates[4]), frequencyKey: "monthly", nextBillingEpoch: dates[4].timeIntervalSince1970, merchantMatchPattern: "Equinox", expectedAmountMin: 95.00, expectedAmountMax: 95.00),
+            RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: billingDisplayString(for: dates[5]), frequencyKey: "monthly", nextBillingEpoch: dates[5].timeIntervalSince1970, merchantMatchPattern: "iCloud", expectedAmountMin: 2.99, expectedAmountMax: 2.99),
+        ]
+    }
 }

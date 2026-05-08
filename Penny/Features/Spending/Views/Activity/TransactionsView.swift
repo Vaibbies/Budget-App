@@ -39,6 +39,7 @@ struct TransactionsView: View {
     @State private var showAddTransaction = false
     @State private var showImporter = false
     @State private var editingInfo: EditInfo? = nil
+    @State private var selectedTransaction: SpendingTransaction? = nil
     @State private var selectedAccountId: UUID? = nil
     @State private var selectedFilter: TransactionFilter = .all
     @State private var selectedCategory: SpendingCategory? = nil
@@ -237,6 +238,11 @@ struct TransactionsView: View {
             )
             .presentationCornerRadius(30)
             .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $selectedTransaction) { transaction in
+            TransactionDetailView(transactionId: transaction.id)
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
         }
         .fileImporter(
             isPresented: $showImporter,
@@ -618,6 +624,9 @@ struct TransactionsView: View {
             }
         }
         .shadow(color: .black.opacity(0.35), radius: 8, y: 4)
+        .onTapGesture {
+            selectedTransaction = transaction
+        }
     }
 }
 
@@ -946,6 +955,7 @@ struct EditTransactionView: View {
             merchantNormalized: data.normalizeMerchant(rawTitle),
             notes: transaction.notes,
             tags: transaction.tags,
+            attachments: transaction.attachments,
             isExcludedFromBudget: transaction.isExcludedFromBudget,
             isRecurringCandidate: transaction.isRecurringCandidate
         ))
