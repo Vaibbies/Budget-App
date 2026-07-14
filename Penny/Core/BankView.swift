@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct BankView: View {
-    private let data = TransactionData.shared
+    @Environment(TransactionData.self) private var data
     private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
     private let warmAccentSoft = Color(red: 1.0, green: 0.55, blue: 0.36)
     private let warmGold = Color(red: 0.98, green: 0.74, blue: 0.34)
@@ -443,7 +443,7 @@ struct BankView: View {
             ? investmentSummary.holdingsCount > 0
             : transactionCount > 0 || monthSpend > 0 || monthIncome > 0
 
-        return HStack(spacing: 14) {
+        return HStack(alignment: .top, spacing: 12) {
             Button {
                 if account.type == .investment {
                     selectedInvestmentAccount = account
@@ -451,121 +451,127 @@ struct BankView: View {
                     selectedAccountForTransactions = account
                 }
             } label: {
-                HStack(spacing: 14) {
-                    Circle()
-                        .fill(accountAccent(for: account.type).opacity(0.14))
-                        .frame(width: 38, height: 38)
-                        .overlay(
-                            Image(systemName: accountIcon(for: account.type))
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(accountAccent(for: account.type))
-                        )
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(account.name)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-
-                        Text(account.institution)
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
-
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text(currencyString(data.effectiveBalance(for: account)))
-                            .font(.system(size: 15, weight: .semibold, design: .serif))
-                            .foregroundColor(data.effectiveBalance(for: account) >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
-
-                        Text(account.type.rawValue.uppercased())
-                            .font(.system(size: 9, weight: .medium))
-                            .tracking(1)
-                            .foregroundColor(.white.opacity(0.3))
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                editingAccount = account
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
-                    .frame(width: 30, height: 30)
-                    .background(Color.white.opacity(0.05))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                data.deleteAccount(id: account.id)
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
-                    .frame(width: 30, height: 30)
-                    .background(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.08))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(16)
-        .overlay(alignment: .bottomLeading) {
-            Group {
-                if hasActivity {
-                    if account.type == .investment {
-                        HStack(spacing: 8) {
-                            accountActivityPill(
-                                title: "Holdings",
-                                value: "\(investmentSummary.holdingsCount)",
-                                accent: warmCream
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 14) {
+                        Circle()
+                            .fill(accountAccent(for: account.type).opacity(0.14))
+                            .frame(width: 38, height: 38)
+                            .overlay(
+                                Image(systemName: accountIcon(for: account.type))
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(accountAccent(for: account.type))
                             )
 
-                            accountActivityPill(
-                                title: "Gain/Loss",
-                                value: signedCurrencyString(investmentSummary.gainLoss),
-                                accent: investmentSummary.gainLoss >= 0 ? warmOlive : warmRose
-                            )
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(account.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white.opacity(0.9))
 
-                            accountActivityPill(
-                                title: "Return",
-                                value: percentString(investmentSummary.gainLossPercent),
-                                accent: investmentSummary.gainLossPercent >= 0 ? warmOlive : warmRose
-                            )
+                            Text(account.institution)
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundColor(.white.opacity(0.4))
                         }
-                        .padding(.leading, 52)
-                        .padding(.bottom, 6)
-                    } else {
-                        HStack(spacing: 8) {
-                            accountActivityPill(
-                                title: "Spent",
-                                value: currencyString(monthSpend),
-                                accent: warmAccent
-                            )
 
-                            if monthIncome > 0 {
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 3) {
+                            Text(currencyString(data.effectiveBalance(for: account)))
+                                .font(.system(size: 15, weight: .semibold, design: .serif))
+                                .foregroundColor(data.effectiveBalance(for: account) >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
+
+                            HStack(spacing: 6) {
+                                Text(account.type.rawValue.uppercased())
+                                    .font(.system(size: 9, weight: .medium))
+                                    .tracking(1)
+                                    .foregroundColor(.white.opacity(0.3))
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.24))
+                            }
+                        }
+                    }
+
+                    if hasActivity {
+                        if account.type == .investment {
+                            HStack(spacing: 8) {
                                 accountActivityPill(
-                                    title: "Income",
-                                    value: currencyString(monthIncome),
-                                    accent: warmGold
+                                    title: "Holdings",
+                                    value: "\(investmentSummary.holdingsCount)",
+                                    accent: warmCream
+                                )
+
+                                accountActivityPill(
+                                    title: "Gain/Loss",
+                                    value: signedCurrencyString(investmentSummary.gainLoss),
+                                    accent: investmentSummary.gainLoss >= 0 ? warmOlive : warmRose
+                                )
+
+                                accountActivityPill(
+                                    title: "Return",
+                                    value: percentString(investmentSummary.gainLossPercent),
+                                    accent: investmentSummary.gainLossPercent >= 0 ? warmOlive : warmRose
                                 )
                             }
+                            .padding(.leading, 52)
+                        } else {
+                            HStack(spacing: 8) {
+                                accountActivityPill(
+                                    title: "Spent",
+                                    value: currencyString(monthSpend),
+                                    accent: warmAccent
+                                )
 
-                            accountActivityPill(
-                                title: "Net",
-                                value: currencyString(monthNet),
-                                accent: monthNet >= 0 ? warmOlive : warmRose
-                            )
+                                if monthIncome > 0 {
+                                    accountActivityPill(
+                                        title: "Income",
+                                        value: currencyString(monthIncome),
+                                        accent: warmGold
+                                    )
+                                }
+
+                                accountActivityPill(
+                                    title: "Net",
+                                    value: currencyString(monthNet),
+                                    accent: monthNet >= 0 ? warmOlive : warmRose
+                                )
+                            }
+                            .padding(.leading, 52)
                         }
-                        .padding(.leading, 52)
-                        .padding(.bottom, 6)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            VStack(spacing: 10) {
+                Button {
+                    editingAccount = account
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.6))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    data.deleteAccount(id: account.id)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(red: 1.0, green: 0.42, blue: 0.16))
+                        .frame(width: 30, height: 30)
+                        .background(Color(red: 1.0, green: 0.42, blue: 0.16).opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
         }
-        .padding(.bottom, hasActivity ? 36 : 0)
+        .padding(16)
     }
 
     private func accountActivityPill(title: String, value: String, accent: Color) -> some View {

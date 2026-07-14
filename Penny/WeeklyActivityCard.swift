@@ -28,7 +28,6 @@ struct WeeklyActivityCard: View {
                 }
             }
 
-            // MARK: - Activity Grid
             HStack(spacing: 0) {
                 ForEach(days.indices, id: \.self) { index in
                     VStack(spacing: 20) {

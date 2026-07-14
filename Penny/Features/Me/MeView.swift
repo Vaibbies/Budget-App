@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MeView: View {
+    @Environment(PennyPlatform.self) private var platform
+
     private enum Route: String, Identifiable {
         case budgetGoals
         case connectedBanks
@@ -66,12 +68,6 @@ struct MeView: View {
     }
 
     // MARK: - Menu Items
-    private let menuItems1 = [
-        MeMenuItem(icon: "chart.pie.fill",  label: "Budget & Goals"),
-        MeMenuItem(icon: "lock.fill",       label: "Connected Banks", badge: TransactionData.shared.accounts.isEmpty ? "None" : "\(TransactionData.shared.accounts.count) Active"),
-        MeMenuItem(icon: "bell.fill",       label: "Notifications"),
-    ]
-
     private let menuItems2 = [
         MeMenuItem(icon: "gearshape.fill",  label: "Settings"),
         MeMenuItem(icon: "sparkles",        label: "Penny AI Settings"),
@@ -83,6 +79,15 @@ struct MeView: View {
         MeMenuItem(icon: "questionmark.circle.fill", label: "Help & FAQs"),
         MeMenuItem(icon: "envelope.fill",           label: "Contact Support"),
     ]
+
+    private var menuItems1: [MeMenuItem] {
+        let linkedAccounts = platform.accountTransactionService.accounts().count
+        return [
+            MeMenuItem(icon: "chart.pie.fill",  label: "Budget & Goals"),
+            MeMenuItem(icon: "lock.fill",       label: "Connected Banks", badge: linkedAccounts == 0 ? "None" : "\(linkedAccounts) Active"),
+            MeMenuItem(icon: "bell.fill",       label: "Notifications"),
+        ]
+    }
 
     private func handleMenuTap1(_ item: MeMenuItem) {
         switch item.label {

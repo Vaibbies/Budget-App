@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct AppModeOnboardingView: View {
-    @Environment(TransactionData.self) private var data
-    @AppStorage(TransactionData.hasCompletedOnboardingKey) private var hasCompletedOnboarding = false
+    @Environment(AppSessionStore.self) private var session
 
     var body: some View {
         ZStack {
@@ -67,8 +66,7 @@ struct AppModeOnboardingView: View {
     }
 
     private func activate(_ mode: AppDataMode) {
-        data.activateMode(mode)
-        hasCompletedOnboarding = true
+        session.completeOnboarding(with: mode)
     }
 
     private func modeCard(

@@ -596,7 +596,7 @@ struct TransactionsView: View {
 
             VStack(alignment: .trailing, spacing: 4) {
                 Text(transaction.amount)
-                    .font(.system(size: 17, weight: .medium, design: .serif))
+    .font(.system(size: 17, weight: .medium, design: .serif))
                     .foregroundColor(transaction.isImpulse ? TransactionsTheme.accent : transaction.kind.signedAmountColor)
                     .tracking(-0.5)
 

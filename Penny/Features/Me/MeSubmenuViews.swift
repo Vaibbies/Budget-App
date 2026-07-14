@@ -141,12 +141,16 @@ private struct MeDetailScaffold: View {
 }
 
 struct PennyAISettingsView: View {
+    @Environment(PennyPlatform.self) private var platform
     @AppStorage("penny.ai.proactiveInsights") private var proactiveInsights = true
     @AppStorage("penny.ai.weeklyCoaching") private var weeklyCoaching = true
     @AppStorage("penny.ai.toughLoveTone") private var roastOverspending = false
     @AppStorage("penny.ai.savingsTone") private var savingsTone = 1.0
 
     var body: some View {
+        let aiSnapshot = platform.aiAssistantService.snapshot()
+        let capabilities = platform.capabilities
+
         MeDetailScaffold(
             title: "PENNY AI SETTINGS",
             sections: [
@@ -159,11 +163,21 @@ struct PennyAISettingsView: View {
                     ]
                 ),
                 MeDetailSectionModel(
-                    title: "Context",
+                    title: "Architecture",
                     rows: [
-                        MeDetailRowModel(icon: "text.bubble.fill", title: "Default Assistant Style", subtitle: "Short, direct answers with actionable steps", value: "Concise"),
-                        MeDetailRowModel(icon: "brain.head.profile", title: "Goal Awareness", subtitle: "Reference savings goals before suggesting new spend", value: "High"),
-                        MeDetailRowModel(icon: "lock.doc.fill", title: "Sensitive Categories", subtitle: "Keep health and transfers out of AI summaries", value: "Protected", valueColor: MeTheme.success)
+                        MeDetailRowModel(icon: "message.badge.waveform.fill", title: "Conversation Surface", subtitle: "In-app assistant shell is already present", value: aiSnapshot.hasConversationUI ? "Ready" : "Missing", valueColor: aiSnapshot.hasConversationUI ? MeTheme.success : MeTheme.accent),
+                        MeDetailRowModel(icon: "tray.full.fill", title: "Finance Context Layer", subtitle: "Structured budgets, accounts, transactions, and recurring context for AI", value: aiSnapshot.hasStructuredFinanceContext ? "Wired" : "Next", valueColor: aiSnapshot.hasStructuredFinanceContext ? MeTheme.success : warmPendingColor),
+                        MeDetailRowModel(icon: "network", title: "Server-backed Inference", subtitle: "Authenticated API service for real model calls and tool execution", value: aiSnapshot.hasServerBackedInference ? "Live" : "Not Connected", valueColor: aiSnapshot.hasServerBackedInference ? MeTheme.success : warmPendingColor),
+                        MeDetailRowModel(icon: "bolt.badge.clock", title: "Action Execution", subtitle: "Workers and assistants taking follow-up actions after insights", value: aiSnapshot.hasActionExecution ? "Enabled" : "Planned", valueColor: aiSnapshot.hasActionExecution ? MeTheme.success : warmPendingColor),
+                        MeDetailRowModel(icon: "square.3.stack.3d.top.filled", title: "Overall Readiness", subtitle: "Current AI platform maturity for competing with Copilot", value: aiSnapshot.readiness.rawValue, valueColor: readinessColor(aiSnapshot.readiness))
+                    ]
+                ),
+                MeDetailSectionModel(
+                    title: "Dependencies",
+                    rows: [
+                        MeDetailRowModel(icon: "person.3.fill", title: "User & Household Service", subtitle: "Foundation for shared assistants, shared budgets, and collaborative plans", value: capabilities.userHouseholds.rawValue, valueColor: readinessColor(capabilities.userHouseholds)),
+                        MeDetailRowModel(icon: "creditcard.and.123", title: "Account & Transaction Service", subtitle: "Needed before the assistant can answer with trustworthy financial facts", value: capabilities.accountsTransactions.rawValue, valueColor: readinessColor(capabilities.accountsTransactions)),
+                        MeDetailRowModel(icon: "bell.badge.fill", title: "Notification Service", subtitle: "Required for AI follow-ups, recurring alerts, and proactive nudges", value: capabilities.notificationEngine.rawValue, valueColor: readinessColor(capabilities.notificationEngine))
                     ]
                 )
             ],
@@ -219,6 +233,21 @@ struct PennyAISettingsView: View {
             )
         )
     }
+
+    private var warmPendingColor: Color {
+        Color(red: 0.98, green: 0.74, blue: 0.34)
+    }
+
+    private func readinessColor(_ readiness: ServiceReadiness) -> Color {
+        switch readiness {
+        case .backendReady:
+            return MeTheme.success
+        case .foundationReady:
+            return warmPendingColor
+        case .localOnly:
+            return .white.opacity(0.55)
+        }
+    }
 }
 
 struct BudgetGoalsView: View {
@@ -270,17 +299,19 @@ struct BudgetGoalsView: View {
 }
 
 struct ConnectedBanksView: View {
-    private let data = TransactionData.shared
+    @Environment(PennyPlatform.self) private var platform
 
     private var lastRefreshLabel: String {
-        guard !data.accounts.isEmpty else { return "No data" }
+        let refreshDates = platform.accountTransactionService.institutionConnections().compactMap(\.lastSyncedAt)
+        guard !refreshDates.isEmpty else { return "No data" }
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
-        return formatter.string(from: data.accounts.map(\.lastUpdated).max() ?? Date())
+        return formatter.string(from: refreshDates.max() ?? Date())
     }
 
     private var linkedAccountRows: [MeDetailRowModel] {
-        if data.accounts.isEmpty {
+        let accounts = platform.accountTransactionService.accounts()
+        if accounts.isEmpty {
             return [
                 MeDetailRowModel(
                     icon: "building.columns.fill",
@@ -291,18 +322,21 @@ struct ConnectedBanksView: View {
             ]
         }
 
-        return data.accounts.map { account in
+        return accounts.map { account in
             MeDetailRowModel(
-                icon: accountIcon(for: account.type),
+                icon: accountIcon(for: account.accountType),
                 title: account.name,
                 subtitle: account.institution,
-                value: currencyString(account.balance),
-                valueColor: account.balance >= 0 ? .white.opacity(0.75) : MeTheme.accent
+                value: currencyString(account.effectiveBalance),
+                valueColor: account.effectiveBalance >= 0 ? .white.opacity(0.75) : MeTheme.accent
             )
         }
     }
 
     var body: some View {
+        let connections = platform.accountTransactionService.institutionConnections()
+        let capabilities = platform.capabilities
+
         MeDetailScaffold(
             title: "CONNECTED BANKS",
             sections: [
@@ -311,11 +345,32 @@ struct ConnectedBanksView: View {
                     rows: linkedAccountRows
                 ),
                 MeDetailSectionModel(
+                    title: "Institutions",
+                    rows: connections.isEmpty ? [
+                        MeDetailRowModel(
+                            icon: "link.badge.plus",
+                            title: "No Institution Layer Yet",
+                            subtitle: "Manual accounts work today; Plaid, MX, or Finicity can plug in here later",
+                            value: "Manual"
+                        )
+                    ] : connections.map { connection in
+                        MeDetailRowModel(
+                            icon: "building.columns.fill",
+                            title: connection.displayName,
+                            subtitle: "\(connection.linkedAccountCount) linked accounts • \(connection.syncLabel)",
+                            value: connection.syncHealth.rawValue,
+                            valueColor: syncColor(connection.syncHealth)
+                        )
+                    }
+                ),
+                MeDetailSectionModel(
                     title: "Connection Status",
                     rows: [
-                        MeDetailRowModel(icon: "link.badge.plus", title: "Linked Accounts", subtitle: "Tracked account connections in this profile", value: "\(data.accounts.count)", valueColor: data.accounts.isEmpty ? .white.opacity(0.6) : MeTheme.success),
+                        MeDetailRowModel(icon: "link.badge.plus", title: "Linked Accounts", subtitle: "Tracked account connections in this profile", value: "\(platform.accountTransactionService.accounts().count)", valueColor: platform.accountTransactionService.accounts().isEmpty ? .white.opacity(0.6) : MeTheme.success),
                         MeDetailRowModel(icon: "clock.arrow.circlepath", title: "Latest Refresh", subtitle: "Most recent account balance update", value: lastRefreshLabel),
-                        MeDetailRowModel(icon: "shield.lefthalf.filled", title: "Connection Mode", subtitle: "Current account sync mode for this build", value: "Local First")
+                        MeDetailRowModel(icon: "shield.lefthalf.filled", title: "Connection Mode", subtitle: "Current account sync mode for this build", value: "Local First"),
+                        MeDetailRowModel(icon: "server.rack", title: "Aggregator Layer", subtitle: "Backend-ready seam for Plaid, MX, or Finicity", value: capabilities.dataAggregators.rawValue, valueColor: readinessColor(capabilities.dataAggregators)),
+                        MeDetailRowModel(icon: "lock.shield.fill", title: "Authenticated API", subtitle: "Needed before real institution sync can run safely", value: capabilities.authenticatedAPI.rawValue, valueColor: readinessColor(capabilities.authenticatedAPI))
                     ]
                 )
             ],
@@ -323,20 +378,45 @@ struct ConnectedBanksView: View {
         )
     }
 
-    private func accountIcon(for type: AccountType) -> String {
+    private func accountIcon(for type: String) -> String {
         switch type {
-        case .checking: return "banknote.fill"
-        case .savings: return "tray.full.fill"
-        case .creditCard: return "creditcard.fill"
-        case .investment: return "chart.line.uptrend.xyaxis"
-        case .loan: return "building.columns.fill"
-        case .cash: return "dollarsign.circle.fill"
+        case AccountType.checking.rawValue: return "banknote.fill"
+        case AccountType.savings.rawValue: return "tray.full.fill"
+        case AccountType.creditCard.rawValue: return "creditcard.fill"
+        case AccountType.investment.rawValue: return "chart.line.uptrend.xyaxis"
+        case AccountType.loan.rawValue: return "building.columns.fill"
+        case AccountType.cash.rawValue: return "dollarsign.circle.fill"
+        default: return "creditcard.fill"
         }
     }
 
     private func currencyString(_ value: Double) -> String {
         let sign = value < 0 ? "-" : ""
         return "\(sign)$\(String(format: "%.0f", abs(value)))"
+    }
+
+    private func syncColor(_ health: SyncHealth) -> Color {
+        switch health {
+        case .healthy:
+            return MeTheme.success
+        case .needsAttention:
+            return MeTheme.accent
+        case .paused:
+            return .white.opacity(0.6)
+        case .notConfigured:
+            return .white.opacity(0.55)
+        }
+    }
+
+    private func readinessColor(_ readiness: ServiceReadiness) -> Color {
+        switch readiness {
+        case .backendReady:
+            return MeTheme.success
+        case .foundationReady:
+            return Color(red: 0.98, green: 0.74, blue: 0.34)
+        case .localOnly:
+            return .white.opacity(0.55)
+        }
     }
 }
 
