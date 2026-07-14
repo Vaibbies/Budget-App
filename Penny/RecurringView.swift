@@ -428,7 +428,8 @@ struct SubscriptionSquareCard: View {
 }
 
 #Preview {
+    let container = AppContainer.preview
     RecurringView()
         .preferredColorScheme(.dark)
-        .environment(RecurringStore(data: .shared))
+        .environment(container.recurring)
 }

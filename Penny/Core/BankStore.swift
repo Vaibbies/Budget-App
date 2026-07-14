@@ -41,15 +41,15 @@ struct BankAccountSnapshot: Identifiable {
 @MainActor
 @Observable
 final class BankStore {
-    private let data: TransactionData
+    private let data: any BankDataStore
     private let mutations: TransactionMutationService
 
     init(
-        data: TransactionData,
-        mutations: TransactionMutationService? = nil
+        data: any BankDataStore,
+        mutations: TransactionMutationService
     ) {
         self.data = data
-        self.mutations = mutations ?? TransactionMutationService(data: data)
+        self.mutations = mutations
     }
 
     var visibleAccounts: [Account] { data.visibleAccounts }
@@ -84,11 +84,11 @@ final class BankStore {
     }
 
     var overallInvestmentPerformance: InvestmentPerformanceSummary {
-        data.investmentPerformance()
+        data.investmentPerformance(forAccount: nil)
     }
 
     var overallPortfolioAllocation: [PortfolioAllocationSlice] {
-        data.portfolioAllocation()
+        data.portfolioAllocation(forAccount: nil)
     }
 
     var accountSnapshots: [BankAccountSnapshot] {
@@ -99,10 +99,10 @@ final class BankStore {
         BankAccountSnapshot(
             account: account,
             effectiveBalance: data.effectiveBalance(for: account),
-            monthSpend: data.monthlySpend(forAccount: account.id),
-            monthIncome: data.monthlyIncome(forAccount: account.id),
-            monthNet: data.monthlyNet(forAccount: account.id),
-            transactionCount: data.transactions(forAccount: account.id).count,
+            monthSpend: data.monthlySpend(forAccount: account.id, inMonth: Date()),
+            monthIncome: data.monthlyIncome(forAccount: account.id, inMonth: Date()),
+            monthNet: data.monthlyNet(forAccount: account.id, inMonth: Date()),
+            transactionCount: data.transactions(forAccount: account.id, inMonth: Date()).count,
             investmentSummary: data.investmentPerformance(forAccount: account.id)
         )
     }

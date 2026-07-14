@@ -4,15 +4,15 @@ import Observation
 @MainActor
 @Observable
 final class SpendingStore {
-    private let data: TransactionData
+    private let data: any SpendingDataStore
     private let mutations: TransactionMutationService
 
     init(
-        data: TransactionData,
-        mutations: TransactionMutationService? = nil
+        data: any SpendingDataStore,
+        mutations: TransactionMutationService
     ) {
         self.data = data
-        self.mutations = mutations ?? TransactionMutationService(data: data)
+        self.mutations = mutations
     }
 
     var groups: [SpendingTransactionGroup] { data.groups }

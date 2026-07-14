@@ -4,15 +4,15 @@ import Observation
 @MainActor
 @Observable
 final class RecurringStore {
-    private let data: TransactionData
+    private let data: any RecurringDataStore
     private let mutations: TransactionMutationService
 
     init(
-        data: TransactionData,
-        mutations: TransactionMutationService? = nil
+        data: any RecurringDataStore,
+        mutations: TransactionMutationService
     ) {
         self.data = data
-        self.mutations = mutations ?? TransactionMutationService(data: data)
+        self.mutations = mutations
     }
 
     var subscriptions: [RecurringSubscription] { data.subscriptions }

@@ -113,11 +113,7 @@ struct RootTabView: View {
 }
 
 #Preview {
+    let container = AppContainer.preview
     RootTabView()
-        .environment(
-            AppMaintenanceStore(
-                spending: SpendingStore(data: .shared),
-                recurring: RecurringStore(data: .shared)
-            )
-        )
+        .environment(container.maintenance)
 }

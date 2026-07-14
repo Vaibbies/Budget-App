@@ -158,9 +158,9 @@ protocol AIAssistantServicing {
 @MainActor
 @Observable
 final class PennyPlatform {
-    static let shared = PennyPlatform(data: .shared)
+    static let shared = PennyPlatform(data: TransactionData.shared)
 
-    let data: TransactionData
+    let data: any PlatformDataStore
     let userHouseholdService: UserHouseholdServicing
     let accountTransactionService: AccountTransactionServicing
     let budgetingService: BudgetingServicing
@@ -170,7 +170,7 @@ final class PennyPlatform {
     let notificationService: NotificationServicing
     let aiAssistantService: AIAssistantServicing
 
-    init(data: TransactionData) {
+    init(data: any PlatformDataStore) {
         self.data = data
         self.userHouseholdService = LocalUserHouseholdService()
         self.accountTransactionService = LocalAccountTransactionService(data: data)
@@ -226,7 +226,7 @@ private struct LocalUserHouseholdService: UserHouseholdServicing {
 }
 
 private struct LocalAccountTransactionService: AccountTransactionServicing {
-    let data: TransactionData
+    let data: any PlatformDataStore
 
     func institutionConnections() -> [InstitutionConnectionSummary] {
         let grouped = Dictionary(grouping: data.accounts) { $0.institution }
@@ -255,23 +255,23 @@ private struct LocalAccountTransactionService: AccountTransactionServicing {
                 institution: account.institution,
                 accountType: account.type.rawValue,
                 effectiveBalance: data.effectiveBalance(for: account),
-                transactionCount: data.transactions(forAccount: account.id).count,
-                monthSpend: data.monthlySpend(forAccount: account.id),
-                monthIncome: data.monthlyIncome(forAccount: account.id)
+                transactionCount: data.transactions(forAccount: account.id, inMonth: Date()).count,
+                monthSpend: data.monthlySpend(forAccount: account.id, inMonth: Date()),
+                monthIncome: data.monthlyIncome(forAccount: account.id, inMonth: Date())
             )
         }
     }
 }
 
 private struct LocalBudgetingService: BudgetingServicing {
-    let data: TransactionData
+    let data: any PlatformDataStore
 
     func snapshot() -> BudgetEngineSnapshot {
         BudgetEngineSnapshot(
             configuredMode: data.budgetMode,
             configuredValue: data.configuredBudgetValue,
             derivedDailyBudget: data.dailyBudget,
-            derivedMonthlyBudget: data.totalMonthlyBudget,
+            derivedMonthlyBudget: data.derivedMonthlyBudget,
             monthlySpent: data.monthlySpent,
             safeToSpend: data.safeToSpendThisMonth,
             readiness: .foundationReady
@@ -280,7 +280,7 @@ private struct LocalBudgetingService: BudgetingServicing {
 }
 
 private struct LocalRecurringService: RecurringServicing {
-    let data: TransactionData
+    let data: any PlatformDataStore
 
     func snapshot() -> RecurringEngineSnapshot {
         let active = data.subscriptions.filter { $0.status == .active }
@@ -298,7 +298,7 @@ private struct LocalRecurringService: RecurringServicing {
 }
 
 private struct LocalCategorizationRulesService: CategorizationRulesServicing {
-    let data: TransactionData
+    let data: any PlatformDataStore
 
     func snapshot() -> CategorizationEngineSnapshot {
         CategorizationEngineSnapshot(
@@ -311,11 +311,11 @@ private struct LocalCategorizationRulesService: CategorizationRulesServicing {
 }
 
 private struct LocalInvestmentService: InvestmentServicing {
-    let data: TransactionData
+    let data: any PlatformDataStore
 
     func snapshot() -> InvestmentEngineSnapshot {
-        let summary = data.investmentPerformance()
-        let allocation = data.portfolioAllocation()
+        let summary = data.investmentPerformance(forAccount: nil)
+        let allocation = data.portfolioAllocation(forAccount: nil)
         return InvestmentEngineSnapshot(
             investmentAccountCount: data.investmentAccounts.count,
             holdingsCount: summary.holdingsCount,

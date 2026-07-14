@@ -733,7 +733,7 @@ private extension String {
 
 // MARK: - Shared Data
 @Observable
-class TransactionData {
+class TransactionData: AppSessionDataStore, TransactionMutationBacking, SpendingDataStore, RecurringDataStore, BankDataStore, PlatformDataStore {
     static let shared = TransactionData()
 
     static let appModeKey = TransactionDataPersistence.appModeKey
@@ -974,77 +974,24 @@ class TransactionData {
     }
 
     func normalizeMerchant(_ merchant: String) -> String {
-        merchant
-            .uppercased()
-            .replacingOccurrences(of: #"^(SQ \*|TST\*|PAYPAL \*|APPLE\.COM/BILL )"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\s+\d{3,}$"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"[^A-Z0-9& ]"#, with: "", options: .regularExpression)
-            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .capitalized
+        TransactionRulesEngine.normalizeMerchant(merchant)
+    }
+
+    private var rulesContext: TransactionRulesEngine.Context {
+        .init(
+            merchantRules: merchantRules,
+            allTransactions: allTransactions,
+            defaultAccountId: defaultSpendingAccount?.id,
+            normalizeMerchant: normalizeMerchant
+        )
     }
 
     func applyMerchantRules(to transaction: SpendingTransaction) -> SpendingTransaction {
-        guard let matchedRule = merchantRules.first(where: { rule in
-            transaction.title.localizedCaseInsensitiveContains(rule.matchPattern) ||
-            (transaction.merchantRaw?.localizedCaseInsensitiveContains(rule.matchPattern) ?? false)
-        }) else {
-            return transaction
-        }
-
-        return SpendingTransaction(
-            id: transaction.id,
-            icon: transaction.icon,
-            title: matchedRule.merchantDisplayName ?? transaction.title,
-            subtitle: (matchedRule.categoryOverride ?? transaction.category).rawValue,
-            time: transaction.time,
-            amount: transaction.amount,
-            isImpulse: transaction.isImpulse,
-            iconColor: (matchedRule.categoryOverride ?? transaction.category).color,
-            bgColor: (matchedRule.categoryOverride ?? transaction.category).color.opacity(0.1),
-            borderColor: (matchedRule.categoryOverride ?? transaction.category).color.opacity(0.2),
-            category: matchedRule.categoryOverride ?? transaction.category,
-            accountId: transaction.accountId ?? defaultSpendingAccount?.id,
-            kind: transaction.kind,
-            merchantRaw: transaction.merchantRaw ?? transaction.title,
-            merchantNormalized: matchedRule.merchantDisplayName ?? normalizeMerchant(transaction.merchantRaw ?? transaction.title),
-            notes: transaction.notes,
-            tags: transaction.tags,
-            attachments: transaction.attachments,
-            isExcludedFromBudget: transaction.isExcludedFromBudget,
-            isRecurringCandidate: transaction.isRecurringCandidate || matchedRule.recurringHint,
-            splitGroupId: transaction.splitGroupId,
-            splitLabel: transaction.splitLabel
-        )
+        TransactionRulesEngine.applyMerchantRules(to: transaction, context: rulesContext)
     }
 
     func normalizeAndApplyRules(to transaction: SpendingTransaction) -> SpendingTransaction {
-        let normalizedMerchant = normalizeMerchant(transaction.merchantRaw ?? transaction.title)
-        let normalized = SpendingTransaction(
-            id: transaction.id,
-            icon: transaction.icon,
-            title: transaction.title,
-            subtitle: transaction.subtitle,
-            time: transaction.time,
-            amount: transaction.amount,
-            isImpulse: transaction.isImpulse,
-            iconColor: transaction.iconColor,
-            bgColor: transaction.bgColor,
-            borderColor: transaction.borderColor,
-            category: transaction.category,
-            accountId: transaction.accountId ?? defaultSpendingAccount?.id,
-            kind: transaction.kind,
-            merchantRaw: transaction.merchantRaw ?? transaction.title,
-            merchantNormalized: normalizedMerchant,
-            notes: transaction.notes,
-            tags: transaction.tags,
-            attachments: transaction.attachments,
-            isExcludedFromBudget: transaction.isExcludedFromBudget,
-            isRecurringCandidate: transaction.isRecurringCandidate || detectRecurringCandidate(for: normalizedMerchant),
-            splitGroupId: transaction.splitGroupId,
-            splitLabel: transaction.splitLabel
-        )
-        return applyMerchantRules(to: normalized)
+        TransactionRulesEngine.normalizeAndApplyRules(to: transaction, context: rulesContext)
     }
 
     func upsertMerchantRule(
@@ -1053,27 +1000,13 @@ class TransactionData {
         merchantDisplayName: String?,
         recurringHint: Bool
     ) {
-        let normalizedPattern = matchPattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedPattern.isEmpty else { return }
-
-        let updatedRule = MerchantRule(
-            id: merchantRules.first(where: {
-                $0.matchPattern.caseInsensitiveCompare(normalizedPattern) == .orderedSame
-            })?.id ?? UUID(),
-            matchPattern: normalizedPattern,
+        merchantRules = TransactionRulesEngine.upsertRule(
+            into: merchantRules,
+            matchPattern: matchPattern,
             categoryOverride: categoryOverride,
-            merchantDisplayName: merchantDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            merchantDisplayName: merchantDisplayName,
             recurringHint: recurringHint
         )
-
-        if let index = merchantRules.firstIndex(where: {
-            $0.matchPattern.caseInsensitiveCompare(normalizedPattern) == .orderedSame
-        }) {
-            merchantRules[index] = updatedRule
-        } else {
-            merchantRules.append(updatedRule)
-        }
-
         reapplyMerchantRules()
     }
 
@@ -1088,19 +1021,18 @@ class TransactionData {
     }
 
     func detectRecurringCandidate(for merchant: String) -> Bool {
-        let recurringMatches = allTransactions.filter {
-            ($0.merchantNormalized ?? normalizeMerchant($0.title)) == merchant
-        }
-        return recurringMatches.count >= 2
+        TransactionRulesEngine.detectRecurringCandidate(
+            for: merchant,
+            allTransactions: allTransactions,
+            normalizeMerchant: normalizeMerchant
+        )
     }
 
     func detectRecurringCandidates() -> [String] {
-        Dictionary(grouping: allTransactions) {
-            $0.merchantNormalized ?? normalizeMerchant($0.title)
-        }
-        .filter { _, txns in txns.count >= 2 }
-        .keys
-        .sorted()
+        TransactionRulesEngine.detectRecurringCandidates(
+            allTransactions: allTransactions,
+            normalizeMerchant: normalizeMerchant
+        )
     }
 
     private static func groupsWithTransactionsSortedByTime(_ groups: [SpendingTransactionGroup]) -> [SpendingTransactionGroup] {
@@ -1570,146 +1502,22 @@ class TransactionData {
     }
 
     func importCSVTransactions(from csv: String, defaultAccountId: UUID? = nil) -> TransactionImportSummary {
-        let rows = csv
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-
-        guard rows.count > 1 else {
-            return TransactionImportSummary(importedCount: 0, duplicateCount: 0)
+        let result = TransactionImportEngine.importCSVTransactions(
+            from: csv,
+            context: .init(
+                defaultAccountId: defaultAccountId,
+                defaultSpendingAccountId: defaultSpendingAccount?.id,
+                visibleAccounts: visibleAccounts,
+                isDuplicate: { [self] date, merchant, signedAmount, accountId in
+                    isDuplicateTransaction(date: date, merchant: merchant, signedAmount: signedAmount, accountId: accountId)
+                },
+                normalizeAndApplyRules: { [self] in normalizeAndApplyRules(to: $0) }
+            )
+        )
+        for (transaction, date) in result.transactions {
+            addTransaction(transaction, on: date)
         }
-
-        let headers = parseCSVRow(rows[0]).map { $0.lowercased() }
-        var importedCount = 0
-        var duplicateCount = 0
-
-        for row in rows.dropFirst() {
-            let values = parseCSVRow(row)
-            guard values.count == headers.count else { continue }
-            let record = Dictionary(uniqueKeysWithValues: zip(headers, values))
-
-            guard
-                let dateString = record["date"] ?? record["transaction date"] ?? record["posted date"],
-                let merchant = record["merchant"] ?? record["description"] ?? record["name"],
-                let amountString = record["amount"]
-            else {
-                continue
-            }
-
-            guard let parsedDate = parseImportDate(dateString) else { continue }
-            let cleanedAmount = amountString
-                .replacingOccurrences(of: "$", with: "")
-                .replacingOccurrences(of: ",", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let rawAmount = Double(cleanedAmount) else { continue }
-
-            let kind = parseImportKind(record["type"], amount: rawAmount)
-            let absoluteAmount = abs(rawAmount)
-            let signedAmount = kind.summaryAmount(absoluteAmount)
-            let normalizedMerchant = normalizeMerchant(merchant)
-            let category = parseImportCategory(record["category"])
-            let accountId = accountIdForImportedRecord(record["account"], defaultAccountId: defaultAccountId)
-
-            if isDuplicateTransaction(
-                date: parsedDate,
-                merchant: normalizedMerchant,
-                signedAmount: signedAmount,
-                accountId: accountId
-            ) {
-                duplicateCount += 1
-                continue
-            }
-
-            let timeFormatter = DateFormatter()
-            timeFormatter.dateFormat = "h:mm a"
-            let transaction = normalizeAndApplyRules(to: SpendingTransaction(
-                icon: category.icon,
-                title: merchant,
-                subtitle: category.rawValue,
-                time: timeFormatter.string(from: parsedDate),
-                amount: kind.signedAmountString(for: absoluteAmount),
-                isImpulse: false,
-                iconColor: category.color,
-                bgColor: category.color.opacity(0.1),
-                borderColor: category.color.opacity(0.2),
-                category: category,
-                accountId: accountId,
-                kind: kind,
-                merchantRaw: merchant,
-                merchantNormalized: normalizedMerchant,
-                tags: ["imported"]
-            ))
-
-            addTransaction(transaction, on: parsedDate)
-            importedCount += 1
-        }
-
-        return TransactionImportSummary(importedCount: importedCount, duplicateCount: duplicateCount)
-    }
-
-    private func parseCSVRow(_ row: String) -> [String] {
-        var result: [String] = []
-        var current = ""
-        var isInsideQuotes = false
-
-        for character in row {
-            switch character {
-            case "\"":
-                isInsideQuotes.toggle()
-            case "," where !isInsideQuotes:
-                result.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
-                current = ""
-            default:
-                current.append(character)
-            }
-        }
-
-        result.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
-        return result
-    }
-
-    private func parseImportDate(_ value: String) -> Date? {
-        let formats = ["yyyy-MM-dd", "MM/dd/yyyy", "M/d/yyyy", "MMM d, yyyy"]
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-
-        for format in formats {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: value.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                return date
-            }
-        }
-        return nil
-    }
-
-    private func parseImportKind(_ rawValue: String?, amount: Double) -> TransactionKind {
-        let normalized = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        if normalized.contains("income") || normalized.contains("deposit") {
-            return .income
-        }
-        if normalized.contains("refund") || normalized.contains("credit") {
-            return .refund
-        }
-        if normalized.contains("transfer") {
-            return .transfer
-        }
-        return .spending
-    }
-
-    private func parseImportCategory(_ rawValue: String?) -> SpendingCategory {
-        guard let normalized = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !normalized.isEmpty else {
-            return .other
-        }
-        return SpendingCategory.allCases.first(where: { $0.rawValue.lowercased() == normalized }) ?? .other
-    }
-
-    private func accountIdForImportedRecord(_ rawValue: String?, defaultAccountId: UUID?) -> UUID? {
-        guard let name = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
-            return defaultAccountId ?? self.defaultSpendingAccount?.id
-        }
-        return visibleAccounts.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })?.id
-            ?? defaultAccountId
-            ?? self.defaultSpendingAccount?.id
+        return result.summary
     }
 
     // MARK: - Add Subscription + Auto-log Transaction

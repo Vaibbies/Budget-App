@@ -4,7 +4,7 @@ import Observation
 @MainActor
 @Observable
 final class AppContainer {
-    static let shared = AppContainer()
+    static let preview = AppContainer(data: TransactionData.shared)
 
     let data: TransactionData
     let platform: PennyPlatform
@@ -16,7 +16,7 @@ final class AppContainer {
     let maintenance: AppMaintenanceStore
 
     init(
-        data: TransactionData = .shared,
+        data: TransactionData,
         platform: PennyPlatform? = nil,
         session: AppSessionStore? = nil,
         mutations: TransactionMutationService? = nil,
@@ -41,6 +41,10 @@ final class AppContainer {
             recurring: resolvedRecurring
         )
     }
+
+    convenience init() {
+        self.init(data: TransactionData.shared)
+    }
 }
 
 @MainActor
@@ -52,7 +56,7 @@ final class AppSessionStore {
         case active
     }
 
-    private let data: TransactionData
+    private let data: any AppSessionDataStore
     private let defaults: UserDefaults
 
     var startupState: StartupState
@@ -61,7 +65,7 @@ final class AppSessionStore {
     }
 
     init(
-        data: TransactionData,
+        data: any AppSessionDataStore,
         defaults: UserDefaults = .standard
     ) {
         self.data = data

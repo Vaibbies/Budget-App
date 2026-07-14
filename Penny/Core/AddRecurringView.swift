@@ -334,7 +334,8 @@ struct AddRecurringView: View {
 }
 
 #Preview {
+    let container = AppContainer.preview
     AddRecurringView()
         .preferredColorScheme(.dark)
-        .environment(RecurringStore(data: .shared))
+        .environment(container.recurring)
 }

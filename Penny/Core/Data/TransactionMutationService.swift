@@ -2,9 +2,9 @@ import Foundation
 
 @MainActor
 final class TransactionMutationService {
-    private let data: TransactionData
+    private let data: any TransactionMutationBacking
 
-    init(data: TransactionData) {
+    init(data: any TransactionMutationBacking) {
         self.data = data
     }
 

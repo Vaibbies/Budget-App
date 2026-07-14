@@ -322,14 +322,10 @@ struct NotificationsSettingsView: View {
 }
 
 #Preview {
+    let container = AppContainer.preview
     NotificationsSettingsView()
         .preferredColorScheme(.dark)
-        .environment(
-            AppMaintenanceStore(
-                spending: SpendingStore(data: .shared),
-                recurring: RecurringStore(data: .shared)
-            )
-        )
+        .environment(container.maintenance)
 }
 
 private extension UNAuthorizationStatus {

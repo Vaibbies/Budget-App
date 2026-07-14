@@ -1768,6 +1768,7 @@ private struct InvestmentHoldingEditorView: View {
 }
 
 #Preview {
+    let container = AppContainer.preview
     BankView()
-        .environment(BankStore(data: .shared))
+        .environment(container.bank)
 }
