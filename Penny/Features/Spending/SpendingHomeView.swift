@@ -26,7 +26,7 @@ struct SpendingHomeView: View {
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
     @AppStorage("penny.profile.name") private var storedProfileName: String = ""
             
-    @Environment(TransactionData.self) private var data
+    @Environment(SpendingStore.self) private var spending
 
     var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -58,32 +58,32 @@ struct SpendingHomeView: View {
 
     // Now pulls from your real recurring subscriptions instead of hardcoded values
     var upcomingRecurring: [RecurringSubscription] {
-        Array(data.subscriptions.filter { $0.status == .active }.prefix(3))
+        Array(spending.subscriptions.filter { $0.status == .active }.prefix(3))
     }
 
     private var cashFlowForecast: CashFlowForecast {
-        data.cashFlowForecast
+        spending.cashFlowForecast
     }
 
     var spendingInsight: String {
-        guard !data.allTransactions.isEmpty || !data.accounts.isEmpty || data.dailyBudget > 0 else {
+        guard !spending.allTransactions.isEmpty || !spending.accounts.isEmpty || spending.dailyBudget > 0 else {
             return "Add your accounts, set a daily budget, and log your first transactions to unlock spending insights."
         }
 
-        let comparison = data.monthToDateComparison()
+        let comparison = spending.monthToDateComparison()
         let direction = comparison.delta <= 0 ? "down" : "up"
         let percent = Int(abs(comparison.percentChange) * 100)
-        let safe = Int(data.safeToSpendThisMonth.rounded())
+        let safe = Int(spending.safeToSpendThisMonth.rounded())
         return "Spending is \(direction) \(percent)% vs last month. You still have about $\(safe) safe to spend."
     }
 
     private var monthlyBudgetProgress: Double {
-        guard data.totalMonthlyBudget > 0 else { return 0 }
-        return min(data.monthlySpent / data.totalMonthlyBudget, 1.0)
+        guard spending.totalMonthlyBudget > 0 else { return 0 }
+        return min(spending.monthlySpent / spending.totalMonthlyBudget, 1.0)
     }
 
     private var monthlyComparison: MonthlyComparison {
-        data.monthToDateComparison()
+        spending.monthToDateComparison()
     }
 
     private var monthlyComparisonLabel: String {
@@ -102,7 +102,7 @@ struct SpendingHomeView: View {
         let now = Date()
         var dailyTotals: [Date: Double] = [:]
 
-        for group in data.groups {
+        for group in spending.groups {
             guard let date = resolveDate(forGroupTitle: group.title, now: now) else { continue }
             let dayStart = calendar.startOfDay(for: date)
             dailyTotals[dayStart, default: 0] += group.transactions.reduce(0) { $0 + $1.amountValue }
@@ -497,7 +497,7 @@ struct SpendingHomeView: View {
                         .font(.system(size: 9, weight: .medium))
                         .tracking(1.5)
                         .foregroundColor(.white.opacity(0.4))
-                    Text("$\(String(format: "%.2f", max(data.totalMonthlyBudget - data.monthlySpent, 0))) left")
+                    Text("$\(String(format: "%.2f", max(spending.totalMonthlyBudget - spending.monthlySpent, 0))) left")
                         .font(.system(size: 20, weight: .light, design: .serif))
                         .foregroundColor(.white)
                 }
@@ -528,13 +528,13 @@ struct SpendingHomeView: View {
                 .frame(height: 6)
 
                 HStack {
-                    Text("$\(String(format: "%.2f", data.monthlySpent)) spent")
+                    Text("$\(String(format: "%.2f", spending.monthlySpent)) spent")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundColor(.white.opacity(0.4))
 
                     Spacer()
 
-                    Text("of $\(String(format: "%.0f", data.totalMonthlyBudget))")
+                    Text("of $\(String(format: "%.0f", spending.totalMonthlyBudget))")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundColor(.white.opacity(0.25))
                 }
@@ -554,7 +554,7 @@ struct SpendingHomeView: View {
             HStack(spacing: 10) {
                 monthMetricCard(
                     title: "SAFE TO SPEND",
-                    value: "$\(String(format: "%.0f", data.safeToSpendThisMonth))",
+                    value: "$\(String(format: "%.0f", spending.safeToSpendThisMonth))",
                     subtitle: "after forecasted cash flow",
                     accent: Color(red: 0.29, green: 0.87, blue: 0.50)
                 )
@@ -570,9 +570,9 @@ struct SpendingHomeView: View {
             HStack(spacing: 10) {
                 monthMetricCard(
                     title: "MONTHLY NET",
-                    value: currencyString(data.monthlyNet),
-                    subtitle: data.monthlyIncome > 0 ? "income minus spend" : "no income tracked yet",
-                    accent: data.monthlyNet >= 0 ? Color(red: 0.29, green: 0.87, blue: 0.50) : Color(red: 1.0, green: 0.42, blue: 0.16)
+                    value: currencyString(spending.monthlyNet),
+                    subtitle: spending.monthlyIncome > 0 ? "income minus spend" : "no income tracked yet",
+                    accent: spending.monthlyNet >= 0 ? Color(red: 0.29, green: 0.87, blue: 0.50) : Color(red: 1.0, green: 0.42, blue: 0.16)
                 )
 
                 monthMetricCard(
@@ -773,7 +773,7 @@ struct SpendingHomeView: View {
     private var categoryPills: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if data.categoryTotals.isEmpty {
+                if spending.categoryTotals.isEmpty {
                     Text("No category activity yet")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.55))
@@ -785,7 +785,7 @@ struct SpendingHomeView: View {
                                 .overlay(Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1))
                         )
                 } else {
-                    ForEach(data.categoryTotals) { category in
+                    ForEach(spending.categoryTotals) { category in
                         Button {
                             drillDownCategory = SpendingCategory.allCases.first(where: { $0.rawValue == category.name })
                             drillDownFilter = .spending
@@ -929,10 +929,10 @@ struct SpendingHomeView: View {
             }
 
             VStack(spacing: 8) {
-                if data.recentTransactions.isEmpty {
+                if spending.recentTransactions.isEmpty {
                     emptySectionCard("No transactions yet", subtitle: "Add a transaction and your recent activity will appear here.")
                 } else {
-                    ForEach(data.recentTransactions) { tx in
+                    ForEach(spending.recentTransactions) { tx in
                         HStack(spacing: 14) {
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(Color(red: 0.1, green: 0.1, blue: 0.12))

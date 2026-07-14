@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SpendingAnalyticsView: View {
     @Environment(\.dismiss) var dismiss
-    private var data = TransactionData.shared
+    @Environment(SpendingStore.self) private var spending
 
     var body: some View {
         ZStack {
@@ -33,20 +33,20 @@ struct SpendingAnalyticsView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
-                        TotalSpendingSection(total: data.totalSpent)
+                        TotalSpendingSection(total: spending.totalSpent)
 
                         PieChartSection(
-                            categories: data.categoryTotals,
-                            transactionCount: data.transactionCount
+                            categories: spending.categoryTotals,
+                            transactionCount: spending.transactionCount
                         )
 
-                        SpendingTrendSection(groups: data.groups)
+                        SpendingTrendSection(groups: spending.groups)
 
-                        TopCategoriesSection(categories: data.categoryTotals)
+                        TopCategoriesSection(categories: spending.categoryTotals)
 
                         StatsRowSection(
-                            totalSpent: data.totalSpent,
-                            topCategory: data.topCategories.first?.name ?? "—"
+                            totalSpent: spending.totalSpent,
+                            topCategory: spending.topCategories.first?.name ?? "—"
                         )
 
                         Color.clear.frame(height: 100)

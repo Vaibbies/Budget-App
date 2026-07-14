@@ -3,16 +3,16 @@ import SwiftUI
 // MARK: - RecurringView
 struct RecurringView: View {
     @Environment(\.dismiss) var dismiss
-    @Environment(TransactionData.self) private var data
+    @Environment(RecurringStore.self) private var recurring
     @State private var showAddRecurring = false
     @State private var selectedStatus: RecurringStatus = .active
 
     var subscriptions: [RecurringSubscription] {
-        data.subscriptions.filter { $0.status == selectedStatus }
+        recurring.subscriptions(status: selectedStatus)
     }
 
     var activeSubscriptions: [RecurringSubscription] {
-        data.subscriptions.filter { $0.status == .active }
+        recurring.activeSubscriptions
     }
 
     var monthlyTotal: Double {
@@ -40,7 +40,6 @@ struct RecurringView: View {
     let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
     var body: some View {
-        @Bindable var data = data
         ZStack {
             Color(red: 0.039, green: 0.043, blue: 0.051).ignoresSafeArea()
 
@@ -141,7 +140,7 @@ struct RecurringView: View {
                 .presentationDragIndicator(.visible)
         }
         .onAppear {
-            data.syncRecurringTransactions()
+            recurring.syncRecurringTransactions()
         }
     }
 
@@ -199,7 +198,7 @@ struct RecurringView: View {
             subscription: sub,
             onDelete: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                    data.subscriptions.removeAll { $0.id == sub.id }
+                    recurring.removeSubscription(id: sub.id)
                 }
                 Haptics.medium()
             }
@@ -208,17 +207,17 @@ struct RecurringView: View {
             Menu {
                 if sub.status != .active {
                     Button("Mark Active") {
-                        data.updateRecurringStatus(sub.id, status: .active)
+                        recurring.updateStatus(sub.id, status: .active)
                     }
                 }
                 if sub.status != .paused {
                     Button("Pause") {
-                        data.updateRecurringStatus(sub.id, status: .paused)
+                        recurring.updateStatus(sub.id, status: .paused)
                     }
                 }
                 if sub.status != .archived {
                     Button("Archive") {
-                        data.updateRecurringStatus(sub.id, status: .archived)
+                        recurring.updateStatus(sub.id, status: .archived)
                     }
                 }
             } label: {
@@ -431,5 +430,5 @@ struct SubscriptionSquareCard: View {
 #Preview {
     RecurringView()
         .preferredColorScheme(.dark)
-        .environment(TransactionData.shared)
+        .environment(RecurringStore(data: .shared))
 }

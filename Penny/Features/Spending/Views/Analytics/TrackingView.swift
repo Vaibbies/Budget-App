@@ -2,36 +2,36 @@ import SwiftUI
 
 struct TrackingView: View {
     @Environment(\.dismiss) var dismiss
-    private var data = TransactionData.shared
+    @Environment(SpendingStore.self) private var spending
 
     private var impulseTotal: Double {
-        data.allTransactions.filter { $0.isImpulse }.reduce(0) { $0 + $1.amountValue }
+        spending.allTransactions.filter { $0.isImpulse }.reduce(0) { $0 + $1.amountValue }
     }
 
     private var impulsePercentage: Double {
-        guard data.totalSpent > 0 else { return 0 }
-        return (impulseTotal / data.totalSpent) * 100
+        guard spending.totalSpent > 0 else { return 0 }
+        return (impulseTotal / spending.totalSpent) * 100
     }
 
     private var avgTransactionValue: Double {
-        guard data.transactionCount > 0 else { return 0 }
-        return data.totalSpent / Double(data.transactionCount)
+        guard spending.transactionCount > 0 else { return 0 }
+        return spending.totalSpent / Double(spending.transactionCount)
     }
 
     private var busiestDay: String {
-        data.groups.max(by: { $0.transactions.count < $1.transactions.count })?.title ?? "—"
+        spending.groups.max(by: { $0.transactions.count < $1.transactions.count })?.title ?? "—"
     }
 
     private var busiestDayCount: Int {
-        data.groups.max(by: { $0.transactions.count < $1.transactions.count })?.transactions.count ?? 0
+        spending.groups.max(by: { $0.transactions.count < $1.transactions.count })?.transactions.count ?? 0
     }
 
     private var topCategory: String {
-        data.topCategories.first?.name ?? "—"
+        spending.topCategories.first?.name ?? "—"
     }
 
     private var topCategoryAmount: Double {
-        data.topCategories.first?.amount ?? 0
+        spending.topCategories.first?.amount ?? 0
     }
 
     var body: some View {
@@ -118,19 +118,19 @@ struct TrackingView: View {
                 Text("$")
                     .font(.system(size: 24, weight: .light))
                     .foregroundColor(.white.opacity(0.5))
-                Text(String(format: "%.0f", floor(data.totalSpent)))
+                Text(String(format: "%.0f", floor(spending.totalSpent)))
                     .font(.system(size: 56, weight: .light, design: .serif))
                     .foregroundColor(.white)
-                Text(String(format: ".%02.0f", (data.totalSpent.truncatingRemainder(dividingBy: 1)) * 100))
+                Text(String(format: ".%02.0f", (spending.totalSpent.truncatingRemainder(dividingBy: 1)) * 100))
                     .font(.system(size: 30, weight: .light, design: .serif))
                     .foregroundColor(.white.opacity(0.4))
             }
 
             HStack(spacing: 16) {
-                Label("\(data.transactionCount) transactions", systemImage: "list.bullet")
+                Label("\(spending.transactionCount) transactions", systemImage: "list.bullet")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(.white.opacity(0.4))
-                Label("\(data.groups.count) days", systemImage: "calendar")
+                Label("\(spending.groups.count) days", systemImage: "calendar")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(.white.opacity(0.4))
             }
@@ -159,7 +159,7 @@ struct TrackingView: View {
                         .font(.system(size: 10, weight: .medium))
                         .tracking(2)
                         .foregroundColor(.white.opacity(0.4))
-                    Text("$\(String(format: "%.2f", data.totalSpent - impulseTotal))")
+                    Text("$\(String(format: "%.2f", spending.totalSpent - impulseTotal))")
                         .font(.system(size: 24, weight: .light, design: .serif))
                         .foregroundColor(Color(red: 0.29, green: 0.87, blue: 0.50))
                 }
@@ -258,7 +258,7 @@ struct TrackingView: View {
                 Text("$\(String(format: "%.2f", topCategoryAmount))")
                     .font(.system(size: 20, weight: .light, design: .serif))
                     .foregroundColor(.white)
-                Text("\(data.totalSpent > 0 ? Int((topCategoryAmount / data.totalSpent) * 100) : 0)% of total")
+                Text("\(spending.totalSpent > 0 ? Int((topCategoryAmount / spending.totalSpent) * 100) : 0)% of total")
                     .font(.system(size: 11, weight: .regular))
                     .foregroundColor(.white.opacity(0.3))
             }
@@ -275,7 +275,7 @@ struct TrackingView: View {
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.4))
 
-            ForEach(data.categoryTotals) { category in
+            ForEach(spending.categoryTotals) { category in
                 HStack(spacing: 12) {
                     Circle()
                         .fill(category.color)
@@ -314,10 +314,10 @@ struct TrackingView: View {
                 .tracking(2)
                 .foregroundColor(.white.opacity(0.4))
 
-            let maxDaySpend = data.groups.map { $0.transactions.reduce(0) { $0 + $1.amountValue } }.max() ?? 1
+            let maxDaySpend = spending.groups.map { $0.transactions.reduce(0) { $0 + $1.amountValue } }.max() ?? 1
 
             HStack(alignment: .bottom, spacing: 8) {
-                ForEach(data.groups.prefix(6)) { group in
+                ForEach(spending.groups.prefix(6)) { group in
                     let dayTotal = group.transactions.reduce(0) { $0 + $1.amountValue }
                     let fraction = dayTotal / maxDaySpend
 

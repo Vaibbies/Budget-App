@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TransactionsCard: View {
-    private var data = TransactionData.shared
+    @Environment(SpendingStore.self) private var spending
     @State private var showTransactions = false
     
     var body: some View {
@@ -31,7 +31,7 @@ struct TransactionsCard: View {
             
             // Transactions list — latest 3 from shared data
             VStack(spacing: 0) {
-                ForEach(Array(data.recentTransactions.enumerated()), id: \.element.id) { index, transaction in
+                ForEach(Array(spending.recentTransactions.enumerated()), id: \.element.id) { index, transaction in
                     TransactionRow(
                         icon: transaction.icon,
                         title: transaction.title,
@@ -41,7 +41,7 @@ struct TransactionsCard: View {
                         isOn: transaction.isImpulse
                     )
                     
-                    if index < data.recentTransactions.count - 1 {
+                    if index < spending.recentTransactions.count - 1 {
                         Divider()
                             .background(Color.white.opacity(0.08))
                             .padding(.horizontal, 16)

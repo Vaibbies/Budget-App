@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct BankView: View {
-    @Environment(TransactionData.self) private var data
+    @Environment(BankStore.self) private var bank
     private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
     private let warmAccentSoft = Color(red: 1.0, green: 0.55, blue: 0.36)
     private let warmGold = Color(red: 0.98, green: 0.74, blue: 0.34)
@@ -17,11 +17,15 @@ struct BankView: View {
     @State private var showCashFlow = false
 
     private var visibleAccounts: [Account] {
-        data.visibleAccounts
+        bank.visibleAccounts
     }
 
     private var cashFlowForecast: CashFlowForecast {
-        data.cashFlowForecast
+        bank.cashFlowForecast
+    }
+
+    private var summary: BankSummarySnapshot {
+        bank.summary
     }
 
     var body: some View {
@@ -38,9 +42,9 @@ struct BankView: View {
                 metricGrid
                     .padding(.bottom, 24)
 
-                if !data.investmentAccounts.isEmpty || !data.investmentHoldings.isEmpty {
-                    sectionHeader("Investments", actionTitle: data.investmentAccounts.isEmpty ? nil : "Manage") {
-                        selectedInvestmentAccount = data.investmentAccounts.first
+                if bank.hasInvestmentData {
+                    sectionHeader("Investments", actionTitle: bank.investmentAccounts.isEmpty ? nil : "Manage") {
+                        selectedInvestmentAccount = bank.investmentAccounts.first
                     }
                     investmentSection
                         .padding(.bottom, 24)
@@ -52,7 +56,7 @@ struct BankView: View {
                 accountsSection
                     .padding(.bottom, 24)
 
-                if !data.savingsGoals.isEmpty {
+                if !bank.savingsGoals.isEmpty {
                     sectionHeader("Progress")
                     goalsSection
                         .padding(.bottom, 24)
@@ -140,7 +144,7 @@ struct BankView: View {
                 .foregroundColor(.white.opacity(0.45))
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(currencyString(data.netWorthBalance))
+                Text(currencyString(summary.netWorthBalance))
                     .font(.system(size: 42, weight: .light, design: .serif))
                     .foregroundColor(.white)
 
@@ -150,8 +154,8 @@ struct BankView: View {
             }
 
             HStack(spacing: 12) {
-                balancePill(label: "Assets", value: currencyString(data.totalAssetsBalance), color: warmGold)
-                balancePill(label: "Liabilities", value: currencyString(data.totalLiabilitiesBalance), color: warmAccent)
+                balancePill(label: "Assets", value: currencyString(summary.totalAssetsBalance), color: warmGold)
+                balancePill(label: "Liabilities", value: currencyString(summary.totalLiabilitiesBalance), color: warmAccent)
             }
         }
         .padding(22)
@@ -178,8 +182,9 @@ struct BankView: View {
         if visibleAccounts.isEmpty {
             return "Add your real accounts here and the rest of the app will use these balances."
         }
-        if data.investmentPerformance().holdingsCount > 0 {
-            return "\(data.investmentPerformance().holdingsCount) holdings tracked across \(data.investmentAccounts.count) investment accounts"
+        let investmentSummary = bank.overallInvestmentPerformance
+        if investmentSummary.holdingsCount > 0 {
+            return "\(investmentSummary.holdingsCount) holdings tracked across \(bank.investmentAccounts.count) investment accounts"
         }
         return "\(visibleAccounts.count) manual accounts powering your balances and safe-to-spend numbers"
     }
@@ -193,11 +198,11 @@ struct BankView: View {
                         .tracking(2)
                         .foregroundColor(.white.opacity(0.45))
 
-                    Text(currencyString(data.configuredBudgetValue > 0 ? data.configuredBudgetValue : data.totalMonthlyBudget))
+                    Text(currencyString(summary.configuredBudgetValue > 0 ? summary.configuredBudgetValue : summary.totalMonthlyBudget))
                         .font(.system(size: 30, weight: .light, design: .serif))
                         .foregroundColor(.white)
 
-                    Text(data.budgetMode == .daily ? "Configured as a daily budget" : "Configured as a monthly budget")
+                    Text(summary.budgetMode == .daily ? "Configured as a daily budget" : "Configured as a monthly budget")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(.white.opacity(0.42))
                 }
@@ -224,13 +229,13 @@ struct BankView: View {
             HStack(spacing: 10) {
                 metricChip(
                     title: "Spent Today",
-                    value: currencyString(data.dailySpent),
+                    value: currencyString(summary.dailySpent),
                     accent: warmAccent
                 )
 
                 metricChip(
                     title: "Remaining",
-                    value: currencyString(data.dailyRemaining),
+                    value: currencyString(summary.dailyRemaining),
                     accent: warmGold
                 )
             }
@@ -238,13 +243,13 @@ struct BankView: View {
             HStack(spacing: 10) {
                 metricChip(
                     title: "Daily Budget",
-                    value: currencyString(data.dailyBudget),
+                    value: currencyString(summary.dailyBudget),
                     accent: warmCream
                 )
 
                 metricChip(
                     title: "Monthly Budget",
-                    value: currencyString(data.totalMonthlyBudget),
+                    value: currencyString(summary.totalMonthlyBudget),
                     accent: warmRose
                 )
             }
@@ -262,14 +267,14 @@ struct BankView: View {
             HStack(spacing: 10) {
                 metricCard(
                     title: "LIQUID CASH",
-                    value: currencyString(data.liquidCashBalance),
+                    value: currencyString(summary.liquidCashBalance),
                     subtitle: "checking + savings + cash",
                     accent: warmGold
                 )
 
                 metricCard(
                     title: "INVESTMENTS",
-                    value: currencyString(data.investedBalance),
+                    value: currencyString(summary.investedBalance),
                     subtitle: "investment accounts",
                     accent: warmCream
                 )
@@ -278,14 +283,14 @@ struct BankView: View {
             HStack(spacing: 10) {
                 metricCard(
                     title: "TOTAL DEBT",
-                    value: currencyString(data.totalDebtBalance),
+                    value: currencyString(summary.totalDebtBalance),
                     subtitle: "cards + loans",
                     accent: warmAccent
                 )
 
                 metricCard(
                     title: "SAFE TO SPEND",
-                    value: currencyString(data.safeToSpendThisMonth),
+                    value: currencyString(summary.safeToSpendThisMonth),
                     subtitle: "budget and cash constrained",
                     accent: warmOlive
                 )
@@ -298,11 +303,12 @@ struct BankView: View {
             if visibleAccounts.isEmpty {
                 emptyAccountsState
             } else {
+                let snapshots = bank.accountSnapshots
                 VStack(spacing: 0) {
-                    ForEach(Array(visibleAccounts.enumerated()), id: \.element.id) { index, account in
-                        accountRow(account)
+                    ForEach(Array(snapshots.enumerated()), id: \.element.id) { index, snapshot in
+                        accountRow(snapshot)
 
-                        if index < visibleAccounts.count - 1 {
+                        if index < snapshots.count - 1 {
                             Divider()
                                 .background(Color.white.opacity(0.05))
                                 .padding(.leading, 60)
@@ -320,8 +326,8 @@ struct BankView: View {
     }
 
     private var investmentSection: some View {
-        let summary = data.investmentPerformance()
-        let allocation = data.portfolioAllocation()
+        let summary = bank.overallInvestmentPerformance
+        let allocation = bank.overallPortfolioAllocation
 
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
@@ -433,15 +439,8 @@ struct BankView: View {
         )
     }
 
-    private func accountRow(_ account: Account) -> some View {
-        let monthSpend = data.monthlySpend(forAccount: account.id)
-        let monthIncome = data.monthlyIncome(forAccount: account.id)
-        let monthNet = data.monthlyNet(forAccount: account.id)
-        let transactionCount = data.transactions(forAccount: account.id).count
-        let investmentSummary = data.investmentPerformance(forAccount: account.id)
-        let hasActivity = account.type == .investment
-            ? investmentSummary.holdingsCount > 0
-            : transactionCount > 0 || monthSpend > 0 || monthIncome > 0
+    private func accountRow(_ snapshot: BankAccountSnapshot) -> some View {
+        let account = snapshot.account
 
         return HStack(alignment: .top, spacing: 12) {
             Button {
@@ -475,9 +474,9 @@ struct BankView: View {
                         Spacer()
 
                         VStack(alignment: .trailing, spacing: 3) {
-                            Text(currencyString(data.effectiveBalance(for: account)))
+                            Text(currencyString(snapshot.effectiveBalance))
                                 .font(.system(size: 15, weight: .semibold, design: .serif))
-                                .foregroundColor(data.effectiveBalance(for: account) >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
+                                .foregroundColor(snapshot.effectiveBalance >= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.16))
 
                             HStack(spacing: 6) {
                                 Text(account.type.rawValue.uppercased())
@@ -492,25 +491,25 @@ struct BankView: View {
                         }
                     }
 
-                    if hasActivity {
+                    if snapshot.hasActivity {
                         if account.type == .investment {
                             HStack(spacing: 8) {
                                 accountActivityPill(
                                     title: "Holdings",
-                                    value: "\(investmentSummary.holdingsCount)",
+                                    value: "\(snapshot.investmentSummary.holdingsCount)",
                                     accent: warmCream
                                 )
 
                                 accountActivityPill(
                                     title: "Gain/Loss",
-                                    value: signedCurrencyString(investmentSummary.gainLoss),
-                                    accent: investmentSummary.gainLoss >= 0 ? warmOlive : warmRose
+                                    value: signedCurrencyString(snapshot.investmentSummary.gainLoss),
+                                    accent: snapshot.investmentSummary.gainLoss >= 0 ? warmOlive : warmRose
                                 )
 
                                 accountActivityPill(
                                     title: "Return",
-                                    value: percentString(investmentSummary.gainLossPercent),
-                                    accent: investmentSummary.gainLossPercent >= 0 ? warmOlive : warmRose
+                                    value: percentString(snapshot.investmentSummary.gainLossPercent),
+                                    accent: snapshot.investmentSummary.gainLossPercent >= 0 ? warmOlive : warmRose
                                 )
                             }
                             .padding(.leading, 52)
@@ -518,22 +517,22 @@ struct BankView: View {
                             HStack(spacing: 8) {
                                 accountActivityPill(
                                     title: "Spent",
-                                    value: currencyString(monthSpend),
+                                    value: currencyString(snapshot.monthSpend),
                                     accent: warmAccent
                                 )
 
-                                if monthIncome > 0 {
+                                if snapshot.monthIncome > 0 {
                                     accountActivityPill(
                                         title: "Income",
-                                        value: currencyString(monthIncome),
+                                        value: currencyString(snapshot.monthIncome),
                                         accent: warmGold
                                     )
                                 }
 
                                 accountActivityPill(
                                     title: "Net",
-                                    value: currencyString(monthNet),
-                                    accent: monthNet >= 0 ? warmOlive : warmRose
+                                    value: currencyString(snapshot.monthNet),
+                                    accent: snapshot.monthNet >= 0 ? warmOlive : warmRose
                                 )
                             }
                             .padding(.leading, 52)
@@ -559,7 +558,7 @@ struct BankView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    data.deleteAccount(id: account.id)
+                    bank.deleteAccount(id: account.id)
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 13, weight: .semibold))
@@ -598,7 +597,7 @@ struct BankView: View {
 
     private var goalsSection: some View {
         VStack(spacing: 10) {
-            ForEach(data.savingsGoals) { goal in
+            ForEach(bank.savingsGoals) { goal in
                 let progress = goal.targetAmount == 0 ? 0 : min(goal.currentAmount / goal.targetAmount, 1)
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -652,11 +651,11 @@ struct BankView: View {
 
     private var healthSection: some View {
         VStack(spacing: 0) {
-            snapshotRow(title: "Daily Budget", subtitle: "current daily budget for this month", value: currencyString(data.dailyBudget), valueColor: .white.opacity(0.8))
+            snapshotRow(title: "Daily Budget", subtitle: "current daily budget for this month", value: currencyString(summary.dailyBudget), valueColor: .white.opacity(0.8))
             divider
-            snapshotRow(title: "Monthly Budget", subtitle: "current monthly budget for this month", value: currencyString(data.totalMonthlyBudget), valueColor: .white.opacity(0.8))
+            snapshotRow(title: "Monthly Budget", subtitle: "current monthly budget for this month", value: currencyString(summary.totalMonthlyBudget), valueColor: .white.opacity(0.8))
             divider
-            snapshotRow(title: "Monthly Net", subtitle: "income minus budgetable spend", value: currencyString(data.monthlyNet), valueColor: data.monthlyNet >= 0 ? warmGold : warmAccent)
+            snapshotRow(title: "Monthly Net", subtitle: "income minus budgetable spend", value: currencyString(summary.monthlyNet), valueColor: summary.monthlyNet >= 0 ? warmGold : warmAccent)
             divider
             snapshotRow(title: "Projected Month End", subtitle: "starting cash plus forecasted inflows and bills", value: currencyString(cashFlowForecast.projectedEndOfMonthCash), valueColor: cashFlowForecast.projectedEndOfMonthCash >= 0 ? .white.opacity(0.75) : warmAccent)
             divider
@@ -664,7 +663,7 @@ struct BankView: View {
             divider
             snapshotRow(title: "Expected Income", subtitle: "inferred paychecks and deposits this cycle", value: currencyString(cashFlowForecast.expectedIncome), valueColor: warmGold)
             divider
-            snapshotRow(title: "Goal Progress", subtitle: "saved across all active goals", value: currencyString(data.totalGoalProgress), valueColor: warmGold)
+            snapshotRow(title: "Goal Progress", subtitle: "saved across all active goals", value: currencyString(summary.totalGoalProgress), valueColor: warmGold)
         }
         .background(Color.white.opacity(0.03))
         .clipShape(RoundedRectangle(cornerRadius: 24))
@@ -889,8 +888,7 @@ struct BankView: View {
 
 private struct AccountEditorView: View {
     @Environment(\.dismiss) private var dismiss
-
-    private let data = TransactionData.shared
+    @Environment(BankStore.self) private var bank
     private let account: Account?
     private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
 
@@ -1043,7 +1041,7 @@ private struct AccountEditorView: View {
     private func saveAccount() {
         guard let rawBalance = parsedNumber(from: balanceText) else { return }
 
-        let storedBalance = data.normalizedBalance(for: type, enteredBalance: rawBalance)
+        let storedBalance = bank.normalizedBalance(for: type, enteredBalance: rawBalance)
         let finalAccount = Account(
             id: account?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1054,7 +1052,7 @@ private struct AccountEditorView: View {
             isHidden: false
         )
 
-        data.upsertAccount(finalAccount)
+        bank.upsertAccount(finalAccount)
         dismiss()
     }
 
@@ -1101,16 +1099,11 @@ private struct AccountEditorView: View {
 
 private struct DailyBudgetEditorView: View {
     @Environment(\.dismiss) private var dismiss
-
-    private let data = TransactionData.shared
+    @Environment(BankStore.self) private var bank
     private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
-    @State private var budgetMode: BudgetMode
-    @State private var budgetValueText: String
-
-    init() {
-        _budgetMode = State(initialValue: TransactionData.shared.budgetMode)
-        _budgetValueText = State(initialValue: Self.decimalString(TransactionData.shared.configuredBudgetValue))
-    }
+    @State private var budgetMode: BudgetMode = .daily
+    @State private var budgetValueText: String = ""
+    @State private var didLoadInitialState = false
 
     private var budgetValue: Double? {
         Self.parsedNumber(from: budgetValueText)
@@ -1122,7 +1115,7 @@ private struct DailyBudgetEditorView: View {
         case .daily:
             return value
         case .monthly:
-            return value / Double(data.daysInCurrentMonth)
+            return value / Double(bank.daysInCurrentMonth)
         }
     }
 
@@ -1130,7 +1123,7 @@ private struct DailyBudgetEditorView: View {
         guard let value = budgetValue else { return 0 }
         switch budgetMode {
         case .daily:
-            return value * Double(data.daysInCurrentMonth)
+            return value * Double(bank.daysInCurrentMonth)
         case .monthly:
             return value
         }
@@ -1195,7 +1188,7 @@ private struct DailyBudgetEditorView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("CALCULATED FOR \(data.daysInCurrentMonth)-DAY MONTH")
+                        Text("CALCULATED FOR \(bank.daysInCurrentMonth)-DAY MONTH")
                             .font(.system(size: 10, weight: .bold))
                             .tracking(2)
                             .foregroundColor(.white.opacity(0.35))
@@ -1234,15 +1227,22 @@ private struct DailyBudgetEditorView: View {
                 }
                 .padding(20)
             }
+            .onAppear {
+                guard !didLoadInitialState else { return }
+                let summary = bank.summary
+                budgetMode = summary.budgetMode
+                budgetValueText = Self.decimalString(summary.configuredBudgetValue)
+                didLoadInitialState = true
+            }
             .onChange(of: budgetMode) { oldMode, newMode in
                 guard oldMode != newMode, let currentValue = budgetValue else { return }
                 let convertedValue: Double
 
                 switch (oldMode, newMode) {
                 case (.daily, .monthly):
-                    convertedValue = currentValue * Double(data.daysInCurrentMonth)
+                    convertedValue = currentValue * Double(bank.daysInCurrentMonth)
                 case (.monthly, .daily):
-                    convertedValue = currentValue / Double(data.daysInCurrentMonth)
+                    convertedValue = currentValue / Double(bank.daysInCurrentMonth)
                 default:
                     convertedValue = currentValue
                 }
@@ -1259,7 +1259,7 @@ private struct DailyBudgetEditorView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
-                        data.setBudget(mode: budgetMode, value: max(budgetValue ?? 0, 0))
+                        bank.setBudget(mode: budgetMode, value: max(budgetValue ?? 0, 0))
                         dismiss()
                     }
                     .foregroundColor(warmAccent)
@@ -1321,8 +1321,7 @@ private struct DailyBudgetEditorView: View {
 
 private struct InvestmentAccountDetailView: View {
     @Environment(\.dismiss) private var dismiss
-
-    private let data = TransactionData.shared
+    @Environment(BankStore.self) private var bank
     private let account: Account
     private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
     private let warmGold = Color(red: 0.98, green: 0.74, blue: 0.34)
@@ -1337,15 +1336,15 @@ private struct InvestmentAccountDetailView: View {
     }
 
     private var holdings: [InvestmentHolding] {
-        data.holdings(forAccount: account.id)
+        bank.holdings(forAccount: account.id)
     }
 
     private var summary: InvestmentPerformanceSummary {
-        data.investmentPerformance(forAccount: account.id)
+        bank.investmentPerformance(forAccount: account.id)
     }
 
     private var allocation: [PortfolioAllocationSlice] {
-        data.portfolioAllocation(forAccount: account.id)
+        bank.portfolioAllocation(forAccount: account.id)
     }
 
     var body: some View {
@@ -1505,7 +1504,7 @@ private struct InvestmentAccountDetailView: View {
                     .contextMenu {
                         Button("Edit") { editingHolding = holding }
                         Button("Delete", role: .destructive) {
-                            data.deleteInvestmentHolding(id: holding.id)
+                            bank.deleteInvestmentHolding(id: holding.id)
                         }
                     }
                 }
@@ -1575,8 +1574,7 @@ private struct InvestmentAccountDetailView: View {
 
 private struct InvestmentHoldingEditorView: View {
     @Environment(\.dismiss) private var dismiss
-
-    private let data = TransactionData.shared
+    @Environment(BankStore.self) private var bank
     private let account: Account
     private let holding: InvestmentHolding?
     private let warmAccent = Color(red: 1.0, green: 0.42, blue: 0.16)
@@ -1712,7 +1710,7 @@ private struct InvestmentHoldingEditorView: View {
             let currentPrice = parsedNumber(from: currentPriceText)
         else { return }
 
-        data.upsertInvestmentHolding(
+        bank.upsertInvestmentHolding(
             InvestmentHolding(
                 id: holding?.id ?? UUID(),
                 accountId: account.id,
@@ -1771,4 +1769,5 @@ private struct InvestmentHoldingEditorView: View {
 
 #Preview {
     BankView()
+        .environment(BankStore(data: .shared))
 }

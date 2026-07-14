@@ -5,7 +5,7 @@ import UserNotifications
 struct NotificationsSettingsView: View {
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(TransactionData.self) private var data
+    @Environment(AppMaintenanceStore.self) private var maintenance
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
     @AppStorage("penny.notifications.spendingAlerts") private var spendingAlerts = true
     @AppStorage("penny.notifications.budgetWarnings") private var budgetWarnings = true
@@ -309,13 +309,14 @@ struct NotificationsSettingsView: View {
             await refreshAuthorizationStatus()
         }
 
-        await LocalNotificationManager.shared.refreshNotifications(
-            using: data,
-            spendingAlertsEnabled: spendingAlerts,
-            budgetWarningsEnabled: budgetWarnings,
-            billRemindersEnabled: billReminders,
-            weeklyDigestEnabled: weeklyDigest,
-            savingTipsEnabled: savingTips
+        await maintenance.refreshNotifications(
+            preferences: NotificationPreferences(
+                spendingAlerts: spendingAlerts,
+                budgetWarnings: budgetWarnings,
+                billReminders: billReminders,
+                weeklyDigest: weeklyDigest,
+                savingTips: savingTips
+            )
         )
     }
 }
@@ -323,6 +324,12 @@ struct NotificationsSettingsView: View {
 #Preview {
     NotificationsSettingsView()
         .preferredColorScheme(.dark)
+        .environment(
+            AppMaintenanceStore(
+                spending: SpendingStore(data: .shared),
+                recurring: RecurringStore(data: .shared)
+            )
+        )
 }
 
 private extension UNAuthorizationStatus {

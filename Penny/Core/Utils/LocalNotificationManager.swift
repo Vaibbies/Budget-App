@@ -1,6 +1,17 @@
 import Foundation
 import UserNotifications
 
+struct NotificationRefreshSnapshot {
+    let subscriptions: [RecurringSubscription]
+    let manualForecastItems: [ManualForecastItem]
+    let dailySpent: Double
+    let dailyRemaining: Double
+    let dailyBudget: Double
+    let totalMonthlyBudget: Double
+    let safeToSpendThisMonth: Double
+    let topCategories: [CategoryData]
+}
+
 final class LocalNotificationManager {
     static let shared = LocalNotificationManager()
 
@@ -29,7 +40,7 @@ final class LocalNotificationManager {
     }
 
     func refreshNotifications(
-        using data: TransactionData,
+        using snapshot: NotificationRefreshSnapshot,
         spendingAlertsEnabled: Bool,
         budgetWarningsEnabled: Bool,
         billRemindersEnabled: Bool,
@@ -42,15 +53,15 @@ final class LocalNotificationManager {
         guard authorized else { return }
 
         if spendingAlertsEnabled {
-            await scheduleSpendingAlert(using: data)
+            await scheduleSpendingAlert(using: snapshot)
         }
 
         if budgetWarningsEnabled {
-            await scheduleBudgetWarning(using: data)
+            await scheduleBudgetWarning(using: snapshot)
         }
 
         if billRemindersEnabled {
-            await scheduleBillReminders(using: data)
+            await scheduleBillReminders(using: snapshot)
         }
 
         if weeklyDigestEnabled {
@@ -58,7 +69,7 @@ final class LocalNotificationManager {
         }
 
         if savingTipsEnabled {
-            await scheduleSavingTip(using: data)
+            await scheduleSavingTip(using: snapshot)
         }
     }
 
@@ -104,7 +115,7 @@ final class LocalNotificationManager {
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
-    private func scheduleBillReminders(using data: TransactionData) async {
+    private func scheduleBillReminders(using snapshot: NotificationRefreshSnapshot) async {
         let calendar = Calendar.current
         let now = Date()
 
@@ -116,7 +127,7 @@ final class LocalNotificationManager {
             let source: String
         }
 
-        let subscriptionReminders: [BillReminder] = data.subscriptions.compactMap { subscription in
+        let subscriptionReminders: [BillReminder] = snapshot.subscriptions.compactMap { subscription in
             guard subscription.status == .active else { return nil }
             guard let epoch = subscription.nextBillingEpoch else { return nil }
             let dueDate = Date(timeIntervalSince1970: epoch)
@@ -131,7 +142,7 @@ final class LocalNotificationManager {
             )
         }
 
-        let manualReminders: [BillReminder] = data.manualForecastItems.compactMap { item in
+        let manualReminders: [BillReminder] = snapshot.manualForecastItems.compactMap { item in
             guard item.kind == .bill else { return nil }
             guard item.date >= now else { return nil }
 
@@ -185,10 +196,10 @@ final class LocalNotificationManager {
         await add(request)
     }
 
-    private func scheduleSpendingAlert(using data: TransactionData) async {
+    private func scheduleSpendingAlert(using snapshot: NotificationRefreshSnapshot) async {
         let content = UNMutableNotificationContent()
         content.title = "Daily Spending Check-In"
-        content.body = "You’ve spent \(currency(data.dailySpent)) today and have \(currency(data.dailyRemaining)) remaining."
+        content.body = "You’ve spent \(currency(snapshot.dailySpent)) today and have \(currency(snapshot.dailyRemaining)) remaining."
         content.sound = .default
 
         var components = DateComponents()
@@ -201,17 +212,17 @@ final class LocalNotificationManager {
         await add(request)
     }
 
-    private func scheduleBudgetWarning(using data: TransactionData) async {
-        let dailyOverBudget = data.dailyBudget > 0 && data.dailySpent >= data.dailyBudget
-        let monthlyLow = data.totalMonthlyBudget > 0 && data.safeToSpendThisMonth <= max(data.dailyBudget, 25)
+    private func scheduleBudgetWarning(using snapshot: NotificationRefreshSnapshot) async {
+        let dailyOverBudget = snapshot.dailyBudget > 0 && snapshot.dailySpent >= snapshot.dailyBudget
+        let monthlyLow = snapshot.totalMonthlyBudget > 0 && snapshot.safeToSpendThisMonth <= max(snapshot.dailyBudget, 25)
 
         guard dailyOverBudget || monthlyLow else { return }
 
         let content = UNMutableNotificationContent()
         content.title = dailyOverBudget ? "Daily Budget Reached" : "Budget Running Tight"
         content.body = dailyOverBudget
-            ? "You’ve spent \(currency(data.dailySpent)) today, which is at or above your daily budget."
-            : "You have \(currency(data.safeToSpendThisMonth)) left that looks safe to spend this month."
+            ? "You’ve spent \(currency(snapshot.dailySpent)) today, which is at or above your daily budget."
+            : "You have \(currency(snapshot.safeToSpendThisMonth)) left that looks safe to spend this month."
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 300, repeats: false)
@@ -220,13 +231,13 @@ final class LocalNotificationManager {
         await add(request)
     }
 
-    private func scheduleSavingTip(using data: TransactionData) async {
+    private func scheduleSavingTip(using snapshot: NotificationRefreshSnapshot) async {
         let tipBody: String
 
-        if let topCategory = data.topCategories.first {
+        if let topCategory = snapshot.topCategories.first {
             tipBody = "Your highest spend category is \(topCategory.name). Cutting back there will move the needle fastest."
-        } else if data.safeToSpendThisMonth > 0 {
-            tipBody = "You still have \(currency(data.safeToSpendThisMonth)) safe to spend this month. Keep that buffer intact."
+        } else if snapshot.safeToSpendThisMonth > 0 {
+            tipBody = "You still have \(currency(snapshot.safeToSpendThisMonth)) safe to spend this month. Keep that buffer intact."
         } else {
             tipBody = "Add accounts, bills, and transactions to get more accurate savings tips."
         }

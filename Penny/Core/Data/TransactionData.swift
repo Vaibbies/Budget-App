@@ -736,42 +736,47 @@ private extension String {
 class TransactionData {
     static let shared = TransactionData()
 
-    static let appModeKey = "penny.app.mode"
-    static let hasCompletedOnboardingKey = "penny.app.didCompleteOnboarding"
+    static let appModeKey = TransactionDataPersistence.appModeKey
+    static let hasCompletedOnboardingKey = TransactionDataPersistence.hasCompletedOnboardingKey
 
-    private let groupsKey = "penny_transaction_groups"
-    private let budgetModeKey = "penny_budget_mode"
-    private let budgetValueKey = "penny_budget_value"
-    private let legacyDailyBudgetKey = "penny_daily_budget"
-    private let legacyMonthlyBudgetKey = "penny_monthly_budget"
-    private let subscriptionsKey = "penny_recurring_subscriptions"
-    private let accountsKey = "penny_accounts"
-    private let investmentHoldingsKey = "penny_investment_holdings"
-    private let merchantRulesKey = "penny_merchant_rules"
-    private let manualForecastItemsKey = "penny_manual_forecast_items"
-    private let manualV1ResetKey = "penny_manual_v1_reset_complete"
     private let defaultAccountId = UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID()
+    private let persistence: TransactionDataPersistence
     private var isNormalizingGroups = false
     private var isSyncingRecurring = false
+    private var isBatchUpdating = false
+    private var derivedMetricsCache: TransactionDerivedMetrics?
 
     var appMode: AppDataMode {
-        didSet { UserDefaults.standard.set(appMode.rawValue, forKey: Self.appModeKey) }
+        didSet {
+            invalidateDerivedMetrics()
+            persistence.saveAppMode(appMode)
+        }
     }
 
     var accounts: [Account] {
-        didSet { saveAccounts() }
+        didSet {
+            invalidateDerivedMetrics()
+            if !isBatchUpdating { saveAccounts() }
+        }
     }
     var investmentHoldings: [InvestmentHolding] {
-        didSet { saveInvestmentHoldings() }
+        didSet {
+            invalidateDerivedMetrics()
+            if !isBatchUpdating { saveInvestmentHoldings() }
+        }
     }
     var budgetCategories: [BudgetCategory]
     var merchantRules: [MerchantRule] {
-        didSet { saveMerchantRules() }
+        didSet {
+            if !isBatchUpdating { saveMerchantRules() }
+        }
     }
     var savingsGoals: [SavingsGoal]
 
     var groups: [SpendingTransactionGroup] {
         didSet {
+            invalidateDerivedMetrics()
+            if isBatchUpdating { return }
             if isNormalizingGroups {
                 save()
                 return
@@ -785,112 +790,112 @@ class TransactionData {
     }
 
     var subscriptions: [RecurringSubscription] {
-        didSet { saveSubscriptions() }
+        didSet {
+            invalidateDerivedMetrics()
+            if !isBatchUpdating { saveSubscriptions() }
+        }
     }
 
     var manualForecastItems: [ManualForecastItem] {
-        didSet { saveManualForecastItems() }
+        didSet {
+            invalidateDerivedMetrics()
+            if !isBatchUpdating { saveManualForecastItems() }
+        }
     }
 
     var budgetMode: BudgetMode {
-        didSet { UserDefaults.standard.set(budgetMode.rawValue, forKey: budgetModeKey) }
+        didSet {
+            invalidateDerivedMetrics()
+            persistence.saveBudgetMode(budgetMode)
+        }
     }
 
     var budgetBaseValue: Double {
-        didSet { UserDefaults.standard.set(budgetBaseValue, forKey: budgetValueKey) }
+        didSet {
+            invalidateDerivedMetrics()
+            persistence.saveBudgetBaseValue(budgetBaseValue)
+        }
     }
 
     private init() {
-        let defaults = UserDefaults.standard
+        let persistence = TransactionDataPersistence()
+        let bootstrap = persistence.loadBootstrapState()
+        self.persistence = persistence
 
-        if !defaults.bool(forKey: manualV1ResetKey) {
-            defaults.removeObject(forKey: groupsKey)
-            defaults.removeObject(forKey: subscriptionsKey)
-            defaults.removeObject(forKey: accountsKey)
-            defaults.set(BudgetMode.daily.rawValue, forKey: budgetModeKey)
-            defaults.set(0, forKey: budgetValueKey)
-            defaults.set(true, forKey: manualV1ResetKey)
-        }
-
-        let savedBudgetMode = defaults.string(forKey: budgetModeKey).flatMap(BudgetMode.init(rawValue:))
-        let savedBudgetValue = defaults.double(forKey: budgetValueKey)
-        let legacyDailyBudget = defaults.double(forKey: legacyDailyBudgetKey)
-        let legacyMonthlyBudget = defaults.double(forKey: legacyMonthlyBudgetKey)
-        self.appMode = defaults.string(forKey: Self.appModeKey).flatMap(AppDataMode.init(rawValue:)) ?? .real
-
-        if let savedBudgetMode, savedBudgetValue > 0 {
-            self.budgetMode = savedBudgetMode
-            self.budgetBaseValue = savedBudgetValue
-        } else if legacyMonthlyBudget > 0 {
-            self.budgetMode = .monthly
-            self.budgetBaseValue = legacyMonthlyBudget
-        } else if legacyDailyBudget > 0 {
-            self.budgetMode = .daily
-            self.budgetBaseValue = legacyDailyBudget
-        } else {
-            self.budgetMode = .daily
-            self.budgetBaseValue = 0.0
-        }
-        if let data = defaults.data(forKey: accountsKey),
-           let decoded = try? JSONDecoder().decode([Account].self, from: data) {
-            self.accounts = decoded
-        } else {
-            self.accounts = []
-        }
-        if let data = defaults.data(forKey: investmentHoldingsKey),
-           let decoded = try? JSONDecoder().decode([InvestmentHolding].self, from: data) {
-            self.investmentHoldings = decoded
-        } else {
-            self.investmentHoldings = []
-        }
+        self.appMode = bootstrap.appMode
+        self.budgetMode = bootstrap.budgetMode
+        self.budgetBaseValue = bootstrap.budgetBaseValue
+        self.accounts = bootstrap.accounts
+        self.investmentHoldings = bootstrap.investmentHoldings
         self.budgetCategories = TransactionData.emptyBudgetCategories
-        if let data = defaults.data(forKey: merchantRulesKey),
-           let decoded = try? JSONDecoder().decode([MerchantRule].self, from: data) {
-            self.merchantRules = decoded
-        } else {
-            self.merchantRules = TransactionData.sampleMerchantRules
-        }
+        self.merchantRules = bootstrap.merchantRules
         self.savingsGoals = []
-
-        let loadedGroups: [SpendingTransactionGroup]
-        if let data = defaults.data(forKey: groupsKey),
-           let decoded = try? JSONDecoder().decode([SpendingTransactionGroup].self, from: data) {
-            loadedGroups = decoded
-        } else {
-            loadedGroups = TransactionData.sampleGroups
-        }
         self.groups = Self.groupsSortedChronologically(
-            Self.groupsWithTransactionsSortedByTime(loadedGroups)
+            Self.groupsWithTransactionsSortedByTime(bootstrap.groups)
         )
+        self.subscriptions = bootstrap.subscriptions
+        self.manualForecastItems = bootstrap.manualForecastItems
 
-        // ✅ per screenshot: if nothing saved yet, start EMPTY (not sampleSubscriptions)
-        if let data = defaults.data(forKey: subscriptionsKey),
-           let decoded = try? JSONDecoder().decode([RecurringSubscription].self, from: data) {
-            self.subscriptions = decoded
-        } else {
-            self.subscriptions = [] // empty instead of sampleSubscriptions
-        }
-
-        if let data = defaults.data(forKey: manualForecastItemsKey),
-           let decoded = try? JSONDecoder().decode([ManualForecastItem].self, from: data) {
-            self.manualForecastItems = decoded.sorted { $0.date < $1.date }
-        } else {
-            self.manualForecastItems = []
-        }
-
-        groups = groups.map { group in
-            SpendingTransactionGroup(
-                id: group.id,
-                title: group.title,
-                transactions: group.transactions.map { normalizeAndApplyRules(to: $0) }
-            )
+        if !groups.isEmpty {
+            groups = groups.map { group in
+                SpendingTransactionGroup(
+                    id: group.id,
+                    title: group.title,
+                    transactions: group.transactions.map { normalizeAndApplyRules(to: $0) }
+                )
+            }
         }
 
         if appMode == .demo && groups.isEmpty && accounts.isEmpty && subscriptions.isEmpty && investmentHoldings.isEmpty {
             loadDemoMode()
         }
 
-        syncRecurringTransactions()
+        if !subscriptions.isEmpty {
+            syncRecurringTransactions()
+        }
+    }
+
+    private func invalidateDerivedMetrics() {
+        derivedMetricsCache = nil
+    }
+
+    private func currentDerivedMetrics() -> TransactionDerivedMetrics {
+        derivedMetrics(referenceDate: Date())
+    }
+
+    private func derivedMetrics(referenceDate: Date) -> TransactionDerivedMetrics {
+        let calendar = Calendar.current
+        let dayKey = calendar.startOfDay(for: referenceDate)
+        let monthKey = calendar.dateInterval(of: .month, for: referenceDate)?.start ?? dayKey
+
+        if calendar.isDate(dayKey, inSameDayAs: Date()),
+           let cache = derivedMetricsCache,
+           cache.dayKey == dayKey,
+           cache.monthKey == monthKey {
+            return cache
+        }
+
+        let cache = TransactionAnalyticsEngine.deriveMetrics(
+            .init(
+                referenceDate: referenceDate,
+                groups: groups,
+                budgetCategories: budgetCategories,
+                visibleAccounts: visibleAccounts,
+                effectiveBalance: { [self] account in effectiveBalance(for: account) },
+                dailyBudget: dailyBudget,
+                derivedMonthlyBudget: derivedMonthlyBudget,
+                subscriptions: subscriptions,
+                manualForecastItems: manualForecastItems,
+                resolveGroupDate: Self.resolvedDate(forGroupTitle:now:),
+                normalizeMerchant: normalizeMerchant
+            )
+        )
+
+        if calendar.isDate(dayKey, inSameDayAs: Date()) {
+            derivedMetricsCache = cache
+        }
+
+        return cache
     }
 
     var daysInCurrentMonth: Int {
@@ -927,40 +932,45 @@ class TransactionData {
     }
 
     private func save() {
-        if let encoded = try? JSONEncoder().encode(groups) {
-            UserDefaults.standard.set(encoded, forKey: groupsKey)
-        }
+        persistence.saveGroups(groups)
     }
 
     private func saveSubscriptions() {
-        if let encoded = try? JSONEncoder().encode(subscriptions) {
-            UserDefaults.standard.set(encoded, forKey: subscriptionsKey)
-        }
+        persistence.saveSubscriptions(subscriptions)
     }
 
     private func saveAccounts() {
-        if let encoded = try? JSONEncoder().encode(accounts) {
-            UserDefaults.standard.set(encoded, forKey: accountsKey)
-            UserDefaults.standard.synchronize()
-        }
+        persistence.saveAccounts(accounts)
+    }
+
+    private func performBatchUpdate(_ updates: () -> Void) {
+        isBatchUpdating = true
+        updates()
+        isBatchUpdating = false
+
+        isNormalizingGroups = true
+        let txSorted = Self.groupsWithTransactionsSortedByTime(groups)
+        groups = Self.groupsSortedChronologically(txSorted)
+        isNormalizingGroups = false
+
+        save()
+        saveAccounts()
+        saveInvestmentHoldings()
+        saveSubscriptions()
+        saveManualForecastItems()
+        saveMerchantRules()
     }
 
     private func saveInvestmentHoldings() {
-        if let encoded = try? JSONEncoder().encode(investmentHoldings) {
-            UserDefaults.standard.set(encoded, forKey: investmentHoldingsKey)
-        }
+        persistence.saveInvestmentHoldings(investmentHoldings)
     }
 
     private func saveManualForecastItems() {
-        if let encoded = try? JSONEncoder().encode(manualForecastItems.sorted { $0.date < $1.date }) {
-            UserDefaults.standard.set(encoded, forKey: manualForecastItemsKey)
-        }
+        persistence.saveManualForecastItems(manualForecastItems)
     }
 
     private func saveMerchantRules() {
-        if let encoded = try? JSONEncoder().encode(merchantRules) {
-            UserDefaults.standard.set(encoded, forKey: merchantRulesKey)
-        }
+        persistence.saveMerchantRules(merchantRules)
     }
 
     func normalizeMerchant(_ merchant: String) -> String {
@@ -1236,7 +1246,7 @@ class TransactionData {
     }
 
     var todayTransactions: [SpendingTransaction] {
-        todayGroups.flatMap(\.transactions)
+        currentDerivedMetrics().todayTransactions
     }
 
     @discardableResult
@@ -1284,7 +1294,7 @@ class TransactionData {
     }
 
     func addTransaction(_ transaction: SpendingTransaction, on date: Date) {
-        let dayLabel = Self.dayLabel(for: date)
+        let dayLabel = RecurringEngine.dayLabel(for: date)
 
         if let index = groups.firstIndex(where: { $0.title == dayLabel }) {
             var updated = groups[index].transactions
@@ -1325,7 +1335,7 @@ class TransactionData {
         if Calendar.current.isDate(newDate, inSameDayAs: originalGroupDate) {
             newDayLabel = originalGroupTitle
         } else {
-            newDayLabel = Self.dayLabel(for: newDate)
+            newDayLabel = RecurringEngine.dayLabel(for: newDate)
         }
 
         let originalGroupIndex = groups.firstIndex(where: { $0.title == originalGroupTitle })
@@ -1708,16 +1718,17 @@ class TransactionData {
         logInitialTransaction: Bool = true,
         initialTransactionDate: Date = Date()
     ) {
-        // Add to recurring list
         subscriptions.append(sub)
 
         guard logInitialTransaction else { return }
-
-        // Auto-log as a transaction on the selected start date
         addRecurringTransaction(
-            for: sub,
-            on: initialTransactionDate,
-            timeString: recurringTimeString(for: initialTransactionDate)
+            RecurringEngine.makeTransaction(
+                for: sub,
+                date: initialTransactionDate,
+                defaultAccountId: defaultSpendingAccount?.id,
+                normalizeMerchant: normalizeMerchant
+            ),
+            on: initialTransactionDate
         )
     }
 
@@ -1742,6 +1753,10 @@ class TransactionData {
             linkedTransactionIds: existing.linkedTransactionIds,
             status: status
         )
+    }
+
+    func removeSubscription(id: UUID) {
+        subscriptions.removeAll { $0.id == id }
     }
 
     func addManualForecastItem(
@@ -1774,115 +1789,23 @@ class TransactionData {
         isSyncingRecurring = true
         defer { isSyncingRecurring = false }
 
-        guard !subscriptions.isEmpty else { return }
-
-        let calendar = Calendar.current
-        let todayStart = calendar.startOfDay(for: Date())
-        var updated = subscriptions
-        var didMutateSubscriptions = false
-
-        for index in updated.indices {
-            guard updated[index].status == .active else { continue }
-            guard let epoch = updated[index].nextBillingEpoch else { continue }
-            if updated[index].frequencyKey == nil && ((updated[index].frequencyDays ?? 0) <= 0) {
-                continue
-            }
-
-            var nextDate = Date(timeIntervalSince1970: epoch)
-            var addedAny = false
-
-            while calendar.startOfDay(for: nextDate) <= todayStart {
-                addRecurringTransaction(for: updated[index], on: nextDate, timeString: "Auto-Pay")
-                addedAny = true
-                nextDate = Self.advanceRecurringDate(
-                    current: nextDate,
-                    frequencyKey: updated[index].frequencyKey,
-                    fallbackDays: updated[index].frequencyDays
-                )
-            }
-
-            if addedAny {
-                didMutateSubscriptions = true
-                let nextBillingString = Self.billingDisplayString(for: nextDate)
-                updated[index] = RecurringSubscription(
-                    id: updated[index].id,
-                    name: updated[index].name,
-                    plan: updated[index].plan,
-                    price: updated[index].price,
-                    iconName: updated[index].iconName,
-                    iconColor: updated[index].iconColor,
-                    bgColor: updated[index].bgColor,
-                    nextBilling: nextBillingString,
-                    frequencyDays: updated[index].frequencyDays,
-                    frequencyKey: updated[index].frequencyKey,
-                    nextBillingEpoch: nextDate.timeIntervalSince1970,
-                    merchantMatchPattern: updated[index].merchantMatchPattern,
-                    expectedAmountMin: updated[index].expectedAmountMin,
-                    expectedAmountMax: updated[index].expectedAmountMax,
-                    linkedTransactionIds: updated[index].linkedTransactionIds,
-                    status: updated[index].status
-                )
-            }
-        }
-
-        if didMutateSubscriptions {
-            subscriptions = updated
-        }
-    }
-
-    private static func billingDisplayString(for date: Date) -> String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "MMM d"
-        return fmt.string(from: date)
-    }
-
-    private static func advanceRecurringDate(current: Date, frequencyKey: String?, fallbackDays: Int?) -> Date {
-        let calendar = Calendar.current
-
-        switch frequencyKey {
-        case "weekly":
-            return calendar.date(byAdding: .day, value: 7, to: current) ?? current
-        case "monthly":
-            return calendar.date(byAdding: .month, value: 1, to: current) ?? current
-        case "quarterly":
-            return calendar.date(byAdding: .month, value: 3, to: current) ?? current
-        case "biannual":
-            return calendar.date(byAdding: .month, value: 6, to: current) ?? current
-        case "annual":
-            return calendar.date(byAdding: .year, value: 1, to: current) ?? current
-        default:
-            let days = max(fallbackDays ?? 0, 1)
-            return calendar.date(byAdding: .day, value: days, to: current) ?? current.addingTimeInterval(Double(days) * 86_400)
-        }
-    }
-
-    private func recurringTimeString(for date: Date) -> String {
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateFormat = "h:mm a"
-        return timeFormatter.string(from: date)
-    }
-
-    private func addRecurringTransaction(for sub: RecurringSubscription, on date: Date, timeString: String) {
-        let dayLabel = Self.dayLabel(for: date)
-
-        let transaction = SpendingTransaction(
-            icon: sub.iconName.contains(".") ? sub.iconName : "music.note",
-            title: sub.name,
-            subtitle: sub.plan ?? "Subscription",
-            time: timeString,
-            amount: "-$\(String(format: "%.2f", sub.price))",
-            isImpulse: false,
-            iconColor: SpendingCategory.subscriptions.color,
-            bgColor: SpendingCategory.subscriptions.color.opacity(0.1),
-            borderColor: SpendingCategory.subscriptions.color.opacity(0.2),
-            category: .subscriptions,
-            accountId: defaultSpendingAccount?.id,
-            kind: .spending,
-            merchantRaw: sub.name,
-            merchantNormalized: normalizeMerchant(sub.merchantMatchPattern ?? sub.name),
-            tags: ["recurring"],
-            isRecurringCandidate: true
+        let result = RecurringEngine.syncSubscriptions(
+            subscriptions,
+            defaultAccountId: defaultSpendingAccount?.id,
+            normalizeMerchant: normalizeMerchant
         )
+
+        for entry in result.generatedEntries {
+            addRecurringTransaction(entry.transaction, on: entry.date)
+        }
+
+        if result.didMutateSubscriptions {
+            subscriptions = result.subscriptions
+        }
+    }
+
+    private func addRecurringTransaction(_ transaction: SpendingTransaction, on date: Date) {
+        let dayLabel = RecurringEngine.dayLabel(for: date)
 
         if let index = groups.firstIndex(where: { $0.title == dayLabel }) {
             var updated = groups[index].transactions
@@ -1896,18 +1819,6 @@ class TransactionData {
         }
     }
 
-    private static func dayLabel(for date: Date) -> String {
-        if Calendar.current.isDateInToday(date) {
-            return "Today"
-        } else if Calendar.current.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            let fmt = DateFormatter()
-            fmt.dateFormat = "EEEE, MMM d"
-            return fmt.string(from: date)
-        }
-    }
-
     // MARK: - Computed Analytics
     var defaultSpendingAccount: Account? {
         accounts.first(where: { $0.id == defaultAccountId })
@@ -1916,66 +1827,19 @@ class TransactionData {
     }
 
     func holdings(forAccount accountId: UUID) -> [InvestmentHolding] {
-        investmentHoldings
-            .filter { $0.accountId == accountId }
-            .sorted { lhs, rhs in
-                if lhs.marketValue != rhs.marketValue {
-                    return lhs.marketValue > rhs.marketValue
-                }
-                return lhs.symbol < rhs.symbol
-            }
+        InvestmentAnalyticsEngine.holdings(forAccount: accountId, in: investmentHoldings)
     }
 
     func investmentPerformance(forAccount accountId: UUID? = nil) -> InvestmentPerformanceSummary {
-        let scopedHoldings: [InvestmentHolding]
-        if let accountId {
-            scopedHoldings = holdings(forAccount: accountId)
-        } else {
-            scopedHoldings = investmentHoldings
-        }
-
-        let marketValue = scopedHoldings.reduce(0) { $0 + $1.marketValue }
-        let costBasis = scopedHoldings.reduce(0) { $0 + $1.costBasis }
-        let gainLoss = marketValue - costBasis
-        let gainLossPercent = costBasis == 0 ? 0 : gainLoss / costBasis
-
-        return InvestmentPerformanceSummary(
-            marketValue: marketValue,
-            costBasis: costBasis,
-            gainLoss: gainLoss,
-            gainLossPercent: gainLossPercent,
-            holdingsCount: scopedHoldings.count
-        )
+        InvestmentAnalyticsEngine.performance(forAccount: accountId, holdings: investmentHoldings)
     }
 
     func portfolioAllocation(forAccount accountId: UUID? = nil) -> [PortfolioAllocationSlice] {
-        let scopedHoldings: [InvestmentHolding]
-        if let accountId {
-            scopedHoldings = holdings(forAccount: accountId)
-        } else {
-            scopedHoldings = investmentHoldings
-        }
-
-        let total = scopedHoldings.reduce(0) { $0 + $1.marketValue }
-        guard total > 0 else { return [] }
-
-        let grouped = Dictionary(grouping: scopedHoldings, by: \.assetClass)
-        return grouped
-            .map { assetClass, holdings in
-                let marketValue = holdings.reduce(0) { $0 + $1.marketValue }
-                return PortfolioAllocationSlice(
-                    assetClass: assetClass,
-                    marketValue: marketValue,
-                    percentage: marketValue / total
-                )
-            }
-            .sorted { $0.marketValue > $1.marketValue }
+        InvestmentAnalyticsEngine.allocation(forAccount: accountId, holdings: investmentHoldings)
     }
 
     func effectiveBalance(for account: Account) -> Double {
-        guard account.type == .investment else { return account.balance }
-        let performance = investmentPerformance(forAccount: account.id)
-        return performance.holdingsCount > 0 ? performance.marketValue : account.balance
+        InvestmentAnalyticsEngine.effectiveBalance(for: account, holdings: investmentHoldings)
     }
 
     var investmentAccounts: [Account] {
@@ -2012,68 +1876,51 @@ class TransactionData {
     }
 
     var visibleAccounts: [Account] {
-        accounts.filter { !$0.isHidden }
+        InvestmentAnalyticsEngine.visibleAccounts(from: accounts)
     }
 
     var liquidCashBalance: Double {
-        visibleAccounts
-            .filter { $0.type == .checking || $0.type == .savings || $0.type == .cash }
-            .reduce(0) { $0 + effectiveBalance(for: $1) }
+        InvestmentAnalyticsEngine.liquidCashBalance(accounts: accounts, holdings: investmentHoldings)
     }
 
     var investedBalance: Double {
-        let holdingsBacked = investmentPerformance().marketValue
-        if holdingsBacked > 0 {
-            return holdingsBacked
-        }
-
-        return visibleAccounts
-            .filter { $0.type == .investment }
-            .reduce(0) { $0 + effectiveBalance(for: $1) }
+        InvestmentAnalyticsEngine.investedBalance(accounts: accounts, holdings: investmentHoldings)
     }
 
     var totalDebtBalance: Double {
-        visibleAccounts
-            .filter { $0.type == .creditCard || $0.type == .loan }
-            .reduce(0) { $0 + abs(effectiveBalance(for: $1)) }
+        InvestmentAnalyticsEngine.totalDebtBalance(accounts: accounts, holdings: investmentHoldings)
     }
 
     var totalAssetsBalance: Double {
-        visibleAccounts
-            .filter { effectiveBalance(for: $0) >= 0 }
-            .reduce(0) { $0 + effectiveBalance(for: $1) }
+        InvestmentAnalyticsEngine.totalAssetsBalance(accounts: accounts, holdings: investmentHoldings)
     }
 
     var totalLiabilitiesBalance: Double {
-        visibleAccounts
-            .filter { effectiveBalance(for: $0) < 0 }
-            .reduce(0) { $0 + abs(effectiveBalance(for: $1)) }
+        InvestmentAnalyticsEngine.totalLiabilitiesBalance(accounts: accounts, holdings: investmentHoldings)
     }
 
     var netWorthBalance: Double {
-        totalAssetsBalance - totalLiabilitiesBalance
+        InvestmentAnalyticsEngine.netWorthBalance(accounts: accounts, holdings: investmentHoldings)
     }
 
     var allTransactions: [SpendingTransaction] {
-        groups.flatMap { $0.transactions }
+        currentDerivedMetrics().allTransactions
     }
 
     var budgetableTransactions: [SpendingTransaction] {
-        allTransactions.filter {
-            $0.kind == .spending && !$0.isExcludedFromBudget && !excludedCategories.contains($0.category)
-        }
+        currentDerivedMetrics().budgetableTransactions
     }
 
     var incomeTransactions: [SpendingTransaction] {
-        allTransactions.filter { $0.kind == .income }
+        currentDerivedMetrics().incomeTransactions
     }
 
     var transferTransactions: [SpendingTransaction] {
-        allTransactions.filter { $0.kind == .transfer }
+        currentDerivedMetrics().transferTransactions
     }
 
     var excludedCategories: Set<SpendingCategory> {
-        Set(budgetCategories.filter(\.isExcluded).map(\.category))
+        currentDerivedMetrics().excludedCategories
     }
 
     func transactions(
@@ -2082,8 +1929,9 @@ class TransactionData {
         accountId: UUID? = nil,
         kind: TransactionKind? = nil
     ) -> [SpendingTransaction] {
-        allTransactions.filter { transaction in
-            let matchesMonth = Self.resolvedDate(forGroupTitle: groupTitle(for: transaction.id), now: date)
+        let metrics = derivedMetrics(referenceDate: date)
+        return metrics.allTransactions.filter { transaction in
+            let matchesMonth = metrics.dateByTransactionId[transaction.id]
                 .map { Calendar.current.isDate($0, equalTo: date, toGranularity: .month) } ?? false
             let matchesCategory = category.map { transaction.category == $0 } ?? true
             let matchesAccount = accountId.map { transaction.accountId == $0 } ?? true
@@ -2093,24 +1941,19 @@ class TransactionData {
     }
 
     private func groupTitle(for transactionId: UUID) -> String {
-        groups.first(where: { group in
-            group.transactions.contains(where: { $0.id == transactionId })
-        })?.title ?? "Today"
+        currentDerivedMetrics().groupTitleByTransactionId[transactionId] ?? "Today"
     }
 
     private func transactionDate(for transaction: SpendingTransaction, referenceDate: Date = Date()) -> Date? {
-        Self.resolvedDate(forGroupTitle: groupTitle(for: transaction.id), now: referenceDate)
+        derivedMetrics(referenceDate: referenceDate).dateByTransactionId[transaction.id]
     }
 
     func groupTitle(forTransactionId transactionId: UUID) -> String? {
-        groups.first(where: { group in
-            group.transactions.contains(where: { $0.id == transactionId })
-        })?.title
+        currentDerivedMetrics().groupTitleByTransactionId[transactionId]
     }
 
     func date(forTransactionId transactionId: UUID, referenceDate: Date = Date()) -> Date? {
-        guard let title = groupTitle(forTransactionId: transactionId) else { return nil }
-        return Self.resolvedDate(forGroupTitle: title, now: referenceDate)
+        derivedMetrics(referenceDate: referenceDate).dateByTransactionId[transactionId]
     }
 
     func merchantHistory(for transaction: SpendingTransaction, limit: Int = 8) -> [SpendingTransaction] {
@@ -2130,27 +1973,23 @@ class TransactionData {
     }
 
     var totalSpent: Double {
-        budgetableTransactions.reduce(0) { $0 + $1.amountValue }
+        currentDerivedMetrics().totalSpent
     }
 
     var transactionCount: Int {
-        budgetableTransactions.count
+        currentDerivedMetrics().transactionCount
     }
 
     var monthToDateTransactions: [SpendingTransaction] {
-        transactions(forMonth: Date())
+        currentDerivedMetrics().monthToDateTransactions
     }
 
     var monthlySpent: Double {
-        monthToDateTransactions
-            .filter { $0.kind == .spending && !$0.isExcludedFromBudget && !excludedCategories.contains($0.category) }
-            .reduce(0) { $0 + $1.amountValue }
+        currentDerivedMetrics().monthlySpent
     }
 
     var monthlyIncome: Double {
-        monthToDateTransactions
-            .filter { $0.kind == .income }
-            .reduce(0) { $0 + $1.amountSignedValue }
+        currentDerivedMetrics().monthlyIncome
     }
 
     var monthlyNet: Double {
@@ -2158,19 +1997,26 @@ class TransactionData {
     }
 
     func spendingByCategory(forMonth date: Date = Date()) -> [SpendingCategory: Double] {
-        transactions(forMonth: date).reduce(into: [SpendingCategory: Double]()) { result, transaction in
+        let metrics = derivedMetrics(referenceDate: date)
+        if Calendar.current.isDate(date, equalTo: metrics.monthKey, toGranularity: .month) {
+            return metrics.currentMonthCategorySpend
+        }
+        if Calendar.current.isDate(date, equalTo: metrics.previousMonthKey, toGranularity: .month) {
+            return metrics.previousMonthCategorySpend
+        }
+
+        return transactions(forMonth: date).reduce(into: [SpendingCategory: Double]()) { result, transaction in
             guard transaction.kind == .spending else { return }
             guard !transaction.isExcludedFromBudget else { return }
-            guard !excludedCategories.contains(transaction.category) else { return }
+            guard !metrics.excludedCategories.contains(transaction.category) else { return }
             result[transaction.category, default: 0] += transaction.amountValue
         }
     }
 
     func monthToDateComparison(referenceDate: Date = Date()) -> MonthlyComparison {
-        let calendar = Calendar.current
-        let previousDate = calendar.date(byAdding: .month, value: -1, to: referenceDate) ?? referenceDate
-        let currentTotal = spendingByCategory(forMonth: referenceDate).values.reduce(0, +)
-        let previousTotal = spendingByCategory(forMonth: previousDate).values.reduce(0, +)
+        let metrics = derivedMetrics(referenceDate: referenceDate)
+        let currentTotal = metrics.currentMonthCategorySpend.values.reduce(0, +)
+        let previousTotal = metrics.previousMonthCategorySpend.values.reduce(0, +)
         return MonthlyComparison(current: currentTotal, previous: previousTotal)
     }
 
@@ -2189,125 +2035,33 @@ class TransactionData {
     }
 
     var cashFlowForecast: CashFlowForecast {
-        cashFlowForecast(referenceDate: Date(), horizonDays: 30)
+        currentDerivedMetrics().cashFlowForecast
     }
 
     func cashFlowForecast(referenceDate: Date = Date(), horizonDays: Int = 30) -> CashFlowForecast {
-        let calendar = Calendar.current
-        let startOfToday = calendar.startOfDay(for: referenceDate)
-        let monthEnd = calendar.dateInterval(of: .month, for: referenceDate)?.end ?? referenceDate
-        let horizonEnd = calendar.date(byAdding: .day, value: horizonDays, to: startOfToday) ?? referenceDate
-        let eventCutoff = min(monthEnd, horizonEnd)
-
-        let billEvents: [CashFlowForecastEvent] = subscriptions.compactMap { subscription in
-            guard subscription.status == .active else { return nil }
-            guard let epoch = subscription.nextBillingEpoch else { return nil }
-            let date = Date(timeIntervalSince1970: epoch)
-            let day = calendar.startOfDay(for: date)
-            guard day >= startOfToday && day <= eventCutoff else { return nil }
-            return CashFlowForecastEvent(
-                id: subscription.id,
-                title: subscription.name,
-                date: day,
-                amount: subscription.price,
-                kind: .bill,
-                subtitle: subscription.plan ?? "Recurring bill"
+        if horizonDays == 30 && Calendar.current.isDate(referenceDate, inSameDayAs: Date()) {
+            return currentDerivedMetrics().cashFlowForecast
+        }
+        return TransactionAnalyticsEngine.buildCashFlowForecast(
+            .init(
+                referenceDate: referenceDate,
+                horizonDays: horizonDays,
+                startingCash: liquidCashBalance,
+                subscriptions: subscriptions,
+                manualForecastItems: manualForecastItems,
+                incomeTransactions: incomeTransactions,
+                transactionDates: derivedMetrics(referenceDate: referenceDate).dateByTransactionId,
+                normalizeMerchant: normalizeMerchant
             )
-        }
-
-        let manualEvents: [CashFlowForecastEvent] = manualForecastItems.compactMap { item in
-            let day = calendar.startOfDay(for: item.date)
-            guard day >= startOfToday && day <= eventCutoff else { return nil }
-            return CashFlowForecastEvent(
-                id: item.id,
-                title: item.title,
-                date: day,
-                amount: item.amount,
-                kind: item.kind == .income ? .income : .bill,
-                subtitle: item.note ?? (item.kind == .income ? "Manual income" : "Manual bill")
-            )
-        }
-
-        let incomeEvents = inferredIncomeForecastEvents(referenceDate: referenceDate, cutoff: eventCutoff)
-        let events = (billEvents + manualEvents + incomeEvents).sorted { lhs, rhs in
-            if lhs.date != rhs.date { return lhs.date < rhs.date }
-            if lhs.kind != rhs.kind { return lhs.kind == .income }
-            return lhs.title < rhs.title
-        }
-
-        let expectedIncome = events.filter { $0.kind == .income }.reduce(0) { $0 + $1.amount }
-        let expectedBills = events.filter { $0.kind == .bill }.reduce(0) { $0 + $1.amount }
-        let projectedEndOfMonthCash = liquidCashBalance + expectedIncome - expectedBills
-
-        return CashFlowForecast(
-            startingCash: liquidCashBalance,
-            events: events,
-            projectedEndOfMonthCash: projectedEndOfMonthCash,
-            expectedIncome: expectedIncome,
-            expectedBills: expectedBills
         )
     }
 
-    private func inferredIncomeForecastEvents(referenceDate: Date, cutoff: Date) -> [CashFlowForecastEvent] {
-        let calendar = Calendar.current
-        let groups = Dictionary(grouping: incomeTransactions) {
-            ($0.merchantNormalized ?? normalizeMerchant($0.title)).lowercased()
-        }
-
-        return groups.compactMap { merchant, transactions in
-            let datedTransactions = transactions.compactMap { transaction -> (Date, SpendingTransaction)? in
-                guard let date = transactionDate(for: transaction, referenceDate: referenceDate) else { return nil }
-                return (calendar.startOfDay(for: date), transaction)
-            }
-            .sorted { $0.0 < $1.0 }
-
-            guard datedTransactions.count >= 2 else { return nil }
-
-            let intervals = zip(datedTransactions, datedTransactions.dropFirst()).compactMap { lhs, rhs in
-                let days = calendar.dateComponents([.day], from: lhs.0, to: rhs.0).day ?? 0
-                return days > 0 ? days : nil
-            }
-
-            guard !intervals.isEmpty else { return nil }
-            let averageInterval = Int((Double(intervals.reduce(0, +)) / Double(intervals.count)).rounded())
-            guard averageInterval >= 7 && averageInterval <= 35 else { return nil }
-
-            guard let last = datedTransactions.last else { return nil }
-            guard let nextDate = calendar.date(byAdding: .day, value: averageInterval, to: last.0) else { return nil }
-            let nextDay = calendar.startOfDay(for: nextDate)
-            let startOfToday = calendar.startOfDay(for: referenceDate)
-            guard nextDay >= startOfToday && nextDay <= cutoff else { return nil }
-
-            let averageAmount = datedTransactions.reduce(0.0) { $0 + abs($1.1.amountSignedValue) } / Double(datedTransactions.count)
-            let title = last.1.title.isEmpty ? merchant.capitalized : last.1.title
-
-            return CashFlowForecastEvent(
-                id: UUID(),
-                title: title,
-                date: nextDay,
-                amount: averageAmount,
-                kind: .income,
-                subtitle: "Expected income"
-            )
-        }
-    }
-
     var totalMonthlyBudget: Double {
-        let categoryTotal = budgetCategories
-            .filter { !$0.isExcluded }
-            .reduce(0) { $0 + $1.monthlyBudget }
-        return derivedMonthlyBudget > 0 ? derivedMonthlyBudget : categoryTotal
+        currentDerivedMetrics().totalMonthlyBudget
     }
 
     var safeToSpendThisMonth: Double {
-        guard liquidCashBalance > 0 else { return 0 }
-
-        let remainingBudget = max(totalMonthlyBudget - monthlySpent, 0)
-        let cashConstrainedCapacity: Double
-
-        cashConstrainedCapacity = max(cashFlowForecast.projectedEndOfMonthCash, 0)
-
-        return min(remainingBudget, cashConstrainedCapacity)
+        currentDerivedMetrics().safeToSpendThisMonth
     }
 
     var totalGoalTarget: Double {
@@ -2319,31 +2073,23 @@ class TransactionData {
     }
 
     var categoryTotals: [CategoryData] {
-        spendingByCategory()
-            .sorted { $0.value > $1.value }
-            .map { CategoryData(name: $0.key.rawValue, color: $0.key.color, amount: $0.value, total: totalSpent) }
+        currentDerivedMetrics().categoryTotals
     }
 
     var topCategories: [CategoryData] {
-        Array(categoryTotals.prefix(4))
+        currentDerivedMetrics().topCategories
     }
 
     var recentTransactions: [SpendingTransaction] {
-        Array(allTransactions.prefix(3))
+        currentDerivedMetrics().recentTransactions
     }
 
     var dailySpent: Double {
-        todayTransactions.reduce(0) { $0 + $1.amountValue }
+        currentDerivedMetrics().dailySpent
     }
 
     var dailyRemaining: Double {
-        let remainingBudget = max(dailyBudget - dailySpent, 0)
-
-        if liquidCashBalance > 0 {
-            return min(remainingBudget, max(liquidCashBalance - dailySpent, 0))
-        }
-
-        return remainingBudget
+        currentDerivedMetrics().dailyRemaining
     }
 
     func upsertAccount(_ account: Account) {
@@ -2384,7 +2130,7 @@ class TransactionData {
 
     func activateMode(_ mode: AppDataMode) {
         appMode = mode
-        UserDefaults.standard.set(true, forKey: Self.hasCompletedOnboardingKey)
+        persistence.markOnboardingComplete()
 
         switch mode {
         case .demo:
@@ -2395,29 +2141,33 @@ class TransactionData {
     }
 
     private func loadDemoMode() {
-        budgetMode = .monthly
-        budgetBaseValue = 4650
-        accounts = Self.sampleAccounts
-        investmentHoldings = Self.sampleInvestmentHoldings
-        budgetCategories = Self.sampleBudgetCategories
-        savingsGoals = Self.sampleSavingsGoals
-        merchantRules = Self.sampleMerchantRules
-        groups = Self.sampleGroups
-        subscriptions = Self.sampleSubscriptions
-        manualForecastItems = Self.sampleManualForecastItems
+        performBatchUpdate {
+            budgetMode = .monthly
+            budgetBaseValue = 4650
+            accounts = Self.sampleAccounts
+            investmentHoldings = Self.sampleInvestmentHoldings
+            budgetCategories = Self.sampleBudgetCategories
+            savingsGoals = Self.sampleSavingsGoals
+            merchantRules = Self.sampleMerchantRules
+            groups = Self.sampleGroups
+            subscriptions = Self.sampleSubscriptions
+            manualForecastItems = Self.sampleManualForecastItems
+        }
     }
 
     private func loadRealMode() {
-        budgetMode = .daily
-        budgetBaseValue = 0
-        accounts = []
-        investmentHoldings = []
-        budgetCategories = Self.emptyBudgetCategories
-        savingsGoals = []
-        merchantRules = Self.sampleMerchantRules
-        groups = []
-        subscriptions = []
-        manualForecastItems = []
+        performBatchUpdate {
+            budgetMode = .daily
+            budgetBaseValue = 0
+            accounts = []
+            investmentHoldings = []
+            budgetCategories = Self.emptyBudgetCategories
+            savingsGoals = []
+            merchantRules = Self.sampleMerchantRules
+            groups = []
+            subscriptions = []
+            manualForecastItems = []
+        }
     }
 
     // MARK: - Sample Data
@@ -2610,7 +2360,7 @@ class TransactionData {
 
         for dayOffset in 0..<days {
             guard let date = calendar.date(byAdding: .day, value: -dayOffset, to: todayStart) else { continue }
-            let title = dayLabel(for: date)
+            let title = RecurringEngine.dayLabel(for: date)
 
             let txCount: Int
             switch dayOffset {
@@ -2696,12 +2446,12 @@ class TransactionData {
         let dates = [5, 8, 12, 16, 21, 25].map { calendar.date(byAdding: .day, value: $0, to: today) ?? today }
 
         return [
-            RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: billingDisplayString(for: dates[0]), frequencyKey: "monthly", nextBillingEpoch: dates[0].timeIntervalSince1970, merchantMatchPattern: "Netflix", expectedAmountMin: 18.99, expectedAmountMax: 21.99),
-            RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: billingDisplayString(for: dates[1]), frequencyKey: "monthly", nextBillingEpoch: dates[1].timeIntervalSince1970, merchantMatchPattern: "Spotify", expectedAmountMin: 9.99, expectedAmountMax: 12.99),
-            RecurringSubscription(name: "Notion", plan: nil, price: 8.00, iconName: "notion", iconColor: .black, bgColor: .white, nextBilling: billingDisplayString(for: dates[2]), frequencyKey: "monthly", nextBillingEpoch: dates[2].timeIntervalSince1970, merchantMatchPattern: "Notion", expectedAmountMin: 8.00, expectedAmountMax: 8.00),
-            RecurringSubscription(name: "YouTube", plan: "Premium", price: 13.99, iconName: "youtube", iconColor: .white, bgColor: Color(red: 1.0, green: 0.0, blue: 0.0), nextBilling: billingDisplayString(for: dates[3]), frequencyKey: "monthly", nextBillingEpoch: dates[3].timeIntervalSince1970, merchantMatchPattern: "YouTube", expectedAmountMin: 12.99, expectedAmountMax: 14.99),
-            RecurringSubscription(name: "Equinox", plan: "Monthly", price: 95.00, iconName: "dumbbell.fill", iconColor: .white, bgColor: Color(red: 0.1, green: 0.1, blue: 0.1), nextBilling: billingDisplayString(for: dates[4]), frequencyKey: "monthly", nextBillingEpoch: dates[4].timeIntervalSince1970, merchantMatchPattern: "Equinox", expectedAmountMin: 95.00, expectedAmountMax: 95.00),
-            RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: billingDisplayString(for: dates[5]), frequencyKey: "monthly", nextBillingEpoch: dates[5].timeIntervalSince1970, merchantMatchPattern: "iCloud", expectedAmountMin: 2.99, expectedAmountMax: 2.99),
+            RecurringSubscription(name: "Netflix", plan: "Premium Plan", price: 19.99, iconName: "netflix", iconColor: .white, bgColor: .black, nextBilling: RecurringEngine.billingDisplayString(for: dates[0]), frequencyKey: "monthly", nextBillingEpoch: dates[0].timeIntervalSince1970, merchantMatchPattern: "Netflix", expectedAmountMin: 18.99, expectedAmountMax: 21.99),
+            RecurringSubscription(name: "Spotify", plan: nil, price: 10.99, iconName: "spotify", iconColor: .black, bgColor: Color(red: 0.11, green: 0.72, blue: 0.33), nextBilling: RecurringEngine.billingDisplayString(for: dates[1]), frequencyKey: "monthly", nextBillingEpoch: dates[1].timeIntervalSince1970, merchantMatchPattern: "Spotify", expectedAmountMin: 9.99, expectedAmountMax: 12.99),
+            RecurringSubscription(name: "Notion", plan: nil, price: 8.00, iconName: "notion", iconColor: .black, bgColor: .white, nextBilling: RecurringEngine.billingDisplayString(for: dates[2]), frequencyKey: "monthly", nextBillingEpoch: dates[2].timeIntervalSince1970, merchantMatchPattern: "Notion", expectedAmountMin: 8.00, expectedAmountMax: 8.00),
+            RecurringSubscription(name: "YouTube", plan: "Premium", price: 13.99, iconName: "youtube", iconColor: .white, bgColor: Color(red: 1.0, green: 0.0, blue: 0.0), nextBilling: RecurringEngine.billingDisplayString(for: dates[3]), frequencyKey: "monthly", nextBillingEpoch: dates[3].timeIntervalSince1970, merchantMatchPattern: "YouTube", expectedAmountMin: 12.99, expectedAmountMax: 14.99),
+            RecurringSubscription(name: "Equinox", plan: "Monthly", price: 95.00, iconName: "dumbbell.fill", iconColor: .white, bgColor: Color(red: 0.1, green: 0.1, blue: 0.1), nextBilling: RecurringEngine.billingDisplayString(for: dates[4]), frequencyKey: "monthly", nextBillingEpoch: dates[4].timeIntervalSince1970, merchantMatchPattern: "Equinox", expectedAmountMin: 95.00, expectedAmountMax: 95.00),
+            RecurringSubscription(name: "iCloud", plan: "200GB", price: 2.99, iconName: "icloud.fill", iconColor: .white, bgColor: Color(red: 0.2, green: 0.5, blue: 1.0), nextBilling: RecurringEngine.billingDisplayString(for: dates[5]), frequencyKey: "monthly", nextBillingEpoch: dates[5].timeIntervalSince1970, merchantMatchPattern: "iCloud", expectedAmountMin: 2.99, expectedAmountMax: 2.99),
         ]
     }
 }

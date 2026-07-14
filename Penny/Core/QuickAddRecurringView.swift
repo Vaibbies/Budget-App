@@ -60,7 +60,7 @@ enum BillingFrequency: String, CaseIterable {
 
 struct QuickAddRecurringView: View {
     @Environment(\.dismiss) var dismiss
-    private var data = TransactionData.shared
+    @Environment(RecurringStore.self) private var recurring
 
     let prefillName: String
     let prefillPrice: Double
@@ -278,7 +278,7 @@ struct QuickAddRecurringView: View {
                         expectedAmountMin: enteredPrice,
                         expectedAmountMax: enteredPrice
                     )
-                    data.addSubscription(sub, logInitialTransaction: false)
+                    recurring.addSubscription(sub, logInitialTransaction: false)
                     dismiss()
                 } label: {
                     Text("Add to Recurring")
@@ -355,4 +355,5 @@ struct QuickAddRecurringView: View {
 #Preview {
     QuickAddRecurringView(prefillName: "Spotify", prefillPrice: 10.99)
         .preferredColorScheme(.dark)
+        .environment(RecurringStore(data: .shared))
 }

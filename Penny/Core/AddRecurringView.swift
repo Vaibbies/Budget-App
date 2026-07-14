@@ -3,7 +3,7 @@ import UIKit
 
 struct AddRecurringView: View {
     @Environment(\.dismiss) var dismiss
-    @Environment(TransactionData.self) private var data
+    @Environment(RecurringStore.self) private var recurring
 
     @State private var name = ""
     @State private var plan = ""
@@ -205,7 +205,7 @@ struct AddRecurringView: View {
                         expectedAmountMax: enteredPrice
                     )
 
-                    data.addSubscription(
+                    recurring.addSubscription(
                         sub,
                         logInitialTransaction: true,
                         initialTransactionDate: startDate
@@ -336,5 +336,5 @@ struct AddRecurringView: View {
 #Preview {
     AddRecurringView()
         .preferredColorScheme(.dark)
-        .environment(TransactionData.shared)
+        .environment(RecurringStore(data: .shared))
 }

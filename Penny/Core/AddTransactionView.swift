@@ -3,6 +3,7 @@ import UIKit
 
 struct AddTransactionView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(SpendingStore.self) private var spending
     @State private var amountString = "0"
     @State private var merchantName = ""
     @State private var selectedKind: TransactionKind = .spending
@@ -15,8 +16,6 @@ struct AddTransactionView: View {
     @State private var isListening = false
     @State private var showRecurringPrompt = false
     @State private var showAddRecurring = false
-
-    private var data = TransactionData.shared
 
     private var displayAmount: String {
         let value = (Double(amountString) ?? 0) / 100
@@ -174,7 +173,7 @@ struct AddTransactionView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
 
-                if !data.visibleAccounts.isEmpty {
+                if !spending.visibleAccounts.isEmpty {
                     accountSelector
                         .padding(.horizontal, 24)
                         .padding(.bottom, 20)
@@ -246,7 +245,7 @@ struct AddTransactionView: View {
             .presentationDragIndicator(.visible)
         }
                 .onAppear {
-            selectedAccountId = data.defaultSpendingAccount?.id
+            selectedAccountId = spending.defaultSpendingAccount?.id
             if splitAllocations.isEmpty {
                 splitAllocations = [
                     SplitTransactionAllocation(category: selectedCategory, amount: 0, label: ""),
@@ -278,7 +277,7 @@ struct AddTransactionView: View {
             : "Added"
 
         let rawTitle = merchantName.isEmpty ? selectedCategory.rawValue : merchantName
-        let transaction = data.normalizeAndApplyRules(to: SpendingTransaction(
+        let transaction = spending.normalizeAndApplyRules(to: SpendingTransaction(
             icon: selectedCategory.icon,
             title: rawTitle,
             subtitle: selectedCategory.rawValue,
@@ -289,26 +288,26 @@ struct AddTransactionView: View {
             bgColor: selectedCategory.color.opacity(0.1),
             borderColor: selectedCategory.color.opacity(0.2),
             category: selectedCategory,
-            accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
+            accountId: selectedAccountId ?? spending.defaultSpendingAccount?.id,
             kind: selectedKind,
             merchantRaw: rawTitle,
-            merchantNormalized: data.normalizeMerchant(rawTitle)
+            merchantNormalized: spending.normalizeMerchant(rawTitle)
         ))
 
         if isSplitTransaction {
             let validAllocations = normalizedSplitAllocations()
             guard !validAllocations.isEmpty else { return }
-            data.addSplitTransactions(
+            spending.addSplitTransactions(
                 merchantName: rawTitle,
                 kind: selectedKind,
-                accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
+                accountId: selectedAccountId ?? spending.defaultSpendingAccount?.id,
                 isImpulse: isImpulse,
                 date: selectedDate,
                 time: timeString,
                 allocations: validAllocations
             )
         } else {
-            data.addTransaction(transaction, on: selectedDate)
+            spending.addTransaction(transaction, on: selectedDate)
         }
 
         if selectedKind == .spending && selectedCategory == .subscriptions {
@@ -331,7 +330,7 @@ struct AddTransactionView: View {
                 .foregroundColor(.white.opacity(0.4))
 
             Picker("Account", selection: $selectedAccountId) {
-                ForEach(data.visibleAccounts, id: \.id) { account in
+                ForEach(spending.visibleAccounts, id: \.id) { account in
                     Text(account.name).tag(Optional(account.id))
                 }
             }

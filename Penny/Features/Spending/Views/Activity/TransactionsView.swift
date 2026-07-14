@@ -31,7 +31,7 @@ struct TransactionsView: View {
     }
 
     @Environment(\.dismiss) var dismiss
-    private var data = TransactionData.shared
+    @Environment(SpendingStore.self) private var spending
     private let scope: Scope
     private let initialAccountId: UUID?
     private let initialCategory: SpendingCategory?
@@ -68,10 +68,10 @@ struct TransactionsView: View {
         let scopedGroups: [(offset: Int, element: SpendingTransactionGroup)]
         switch scope {
         case .all:
-            scopedGroups = Array(data.groups.enumerated())
+            scopedGroups = Array(spending.groups.enumerated())
         case .today:
-            scopedGroups = Array(data.groups.enumerated()).filter { _, group in
-                data.isGroupInToday(group)
+            scopedGroups = Array(spending.groups.enumerated()).filter { _, group in
+                spending.isGroupInToday(group)
             }
         }
 
@@ -131,7 +131,7 @@ struct TransactionsView: View {
     }
 
     private var availableCategories: [SpendingCategory] {
-        let categories = Set(data.allTransactions.compactMap { transaction in
+        let categories = Set(spending.allTransactions.compactMap { transaction in
             let matchesAccount = selectedAccountId.map { transaction.accountId == $0 } ?? true
             let matchesFilter = matchesTypeFilter(transaction)
             let matchesSearch = matchesSearch(transaction)
@@ -165,7 +165,7 @@ struct TransactionsView: View {
                     .padding(.bottom, 10)
                 transactionFilterBar
                     .padding(.bottom, 8)
-                if !data.visibleAccounts.isEmpty {
+                if !spending.visibleAccounts.isEmpty {
                     accountFilterBar
                         .padding(.bottom, 8)
                 }
@@ -261,7 +261,7 @@ struct TransactionsView: View {
             if selectedFilter == .all {
                 selectedFilter = initialFilter
             }
-            data.syncRecurringTransactions()
+            spending.syncRecurringTransactions()
         }
     }
 
@@ -438,7 +438,7 @@ struct TransactionsView: View {
                     selectedAccountId = nil
                 }
 
-                ForEach(data.visibleAccounts, id: \.id) { account in
+                ForEach(spending.visibleAccounts, id: \.id) { account in
                     accountFilterChip(title: account.name, isSelected: selectedAccountId == account.id) {
                         selectedAccountId = account.id
                     }
@@ -489,19 +489,7 @@ struct TransactionsView: View {
     // MARK: - Delete
     private func deleteTransaction(groupIndex: Int, txIndex: Int, transactionId: UUID) {
         Haptics.medium()
-        if !data.removeTransaction(id: transactionId) {
-            var updatedTransactions = data.groups[groupIndex].transactions
-            updatedTransactions.remove(at: txIndex)
-            if updatedTransactions.isEmpty {
-                data.groups.remove(at: groupIndex)
-            } else {
-                data.groups[groupIndex] = SpendingTransactionGroup(
-                    id: data.groups[groupIndex].id,
-                    title: data.groups[groupIndex].title,
-                    transactions: updatedTransactions
-                )
-            }
-        }
+        _ = spending.removeTransaction(id: transactionId)
     }
 
     private func matchesFilters(_ transaction: SpendingTransaction) -> Bool {
@@ -518,7 +506,7 @@ struct TransactionsView: View {
             defer { url.stopAccessingSecurityScopedResource() }
 
             let contents = try String(contentsOf: url, encoding: .utf8)
-            let summary = data.importCSVTransactions(from: contents, defaultAccountId: selectedAccountId)
+            let summary = spending.importCSVTransactions(from: contents, defaultAccountId: selectedAccountId)
             importSummaryMessage = "Imported \(summary.importedCount) • Skipped duplicates \(summary.duplicateCount)"
         } catch {
             importSummaryMessage = "Import failed"
@@ -552,7 +540,7 @@ struct TransactionsView: View {
             transaction.merchantNormalized ?? "",
             transaction.merchantRaw ?? "",
             transaction.category.rawValue,
-            data.accountName(for: transaction.accountId) ?? "",
+            spending.accountName(for: transaction.accountId) ?? "",
             transaction.kind.rawValue
         ]
 
@@ -562,7 +550,7 @@ struct TransactionsView: View {
     // MARK: - Row
     private func fullTransactionRow(_ transaction: SpendingTransaction) -> some View {
         let isSubscription = transaction.category == .subscriptions
-        let subtitleParts: [String] = [transaction.time, transaction.subtitle, data.accountName(for: transaction.accountId)]
+        let subtitleParts: [String] = [transaction.time, transaction.subtitle, spending.accountName(for: transaction.accountId)]
             .compactMap { value in
                 guard let value, !value.isEmpty else { return nil }
                 return value
@@ -633,11 +621,10 @@ struct TransactionsView: View {
 // MARK: - Edit Transaction View
 struct EditTransactionView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(SpendingStore.self) private var spending
     let transaction: SpendingTransaction
     let originalGroupTitle: String
     let originalGroupDate: Date
-
-    private var data = TransactionData.shared
 
     @State private var amountString: String
     @State private var merchantName: String
@@ -652,10 +639,9 @@ struct EditTransactionView: View {
     @State private var applyRuleToFuture = false
     @State private var merchantRuleName = ""
     @State private var merchantRulePattern = ""
+    @State private var hasLoadedSplitAllocations = false
 
     init(transaction: SpendingTransaction, originalGroupTitle: String) {
-        let existingSplitTransactions = transaction.splitGroupId.map { TransactionData.shared.splitTransactions(for: $0) } ?? []
-        let splitSeedTransactions = existingSplitTransactions.isEmpty ? [transaction] : existingSplitTransactions
         self.transaction = transaction
         self.originalGroupTitle = originalGroupTitle
         self.originalGroupDate = Self.resolveDate(fromGroupTitle: originalGroupTitle) ?? Date()
@@ -666,14 +652,14 @@ struct EditTransactionView: View {
         _selectedCategory = State(initialValue: transaction.category)
         _selectedAccountId = State(initialValue: transaction.accountId)
         _isImpulse = State(initialValue: transaction.isImpulse)
-        _isSplitTransaction = State(initialValue: transaction.isSplitChild || splitSeedTransactions.count > 1)
-        _splitAllocations = State(initialValue: splitSeedTransactions.map {
+        _isSplitTransaction = State(initialValue: transaction.isSplitChild || transaction.splitGroupId != nil)
+        _splitAllocations = State(initialValue: [
             SplitTransactionAllocation(
-                category: $0.category,
-                amount: $0.amountValue,
-                label: $0.splitLabel ?? ""
+                category: transaction.category,
+                amount: transaction.amountValue,
+                label: transaction.splitLabel ?? ""
             )
-        })
+        ])
         _merchantRuleName = State(initialValue: transaction.merchantRaw ?? transaction.title)
         _merchantRulePattern = State(initialValue: transaction.merchantNormalized ?? transaction.merchantRaw ?? transaction.title)
 
@@ -841,7 +827,7 @@ struct EditTransactionView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
 
-                if !data.visibleAccounts.isEmpty {
+                if !spending.visibleAccounts.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("ACCOUNT")
                             .font(.system(size: 10, weight: .bold))
@@ -849,7 +835,7 @@ struct EditTransactionView: View {
                             .foregroundColor(.white.opacity(0.4))
 
                         Picker("Account", selection: $selectedAccountId) {
-                            ForEach(data.visibleAccounts, id: \.id) { account in
+                            ForEach(spending.visibleAccounts, id: \.id) { account in
                                 Text(account.name).tag(Optional(account.id))
                             }
                         }
@@ -918,6 +904,9 @@ struct EditTransactionView: View {
             }
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
+        .onAppear {
+            loadSplitAllocationsIfNeeded()
+        }
     }
 
     private func handleKey(_ key: String) {
@@ -937,7 +926,7 @@ struct EditTransactionView: View {
         Haptics.medium()
 
         let rawTitle = merchantName.isEmpty ? selectedCategory.rawValue : merchantName
-        let updated = data.normalizeAndApplyRules(to: SpendingTransaction(
+        let updated = spending.normalizeAndApplyRules(to: SpendingTransaction(
             id: transaction.id,
             icon: selectedCategory.icon,
             title: rawTitle,
@@ -949,10 +938,10 @@ struct EditTransactionView: View {
             bgColor: selectedCategory.color.opacity(0.1),
             borderColor: selectedCategory.color.opacity(0.2),
             category: selectedCategory,
-            accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
+            accountId: selectedAccountId ?? spending.defaultSpendingAccount?.id,
             kind: selectedKind,
             merchantRaw: rawTitle,
-            merchantNormalized: data.normalizeMerchant(rawTitle),
+            merchantNormalized: spending.normalizeMerchant(rawTitle),
             notes: transaction.notes,
             tags: transaction.tags,
             attachments: transaction.attachments,
@@ -961,7 +950,7 @@ struct EditTransactionView: View {
         ))
 
         if applyRuleToFuture {
-            data.upsertMerchantRule(
+            spending.upsertMerchantRule(
                 matchPattern: merchantRulePattern.isEmpty ? rawTitle : merchantRulePattern,
                 categoryOverride: selectedCategory,
                 merchantDisplayName: merchantRuleName.isEmpty ? rawTitle : merchantRuleName,
@@ -972,20 +961,20 @@ struct EditTransactionView: View {
         if isSplitTransaction {
             let validAllocations = normalizedSplitAllocations()
             guard !validAllocations.isEmpty else { return }
-            data.replaceTransactionWithSplit(
+            spending.replaceTransactionWithSplit(
                 original: transaction,
                 originalGroupTitle: originalGroupTitle,
                 originalGroupDate: originalGroupDate,
                 newDate: selectedDate,
                 merchantName: rawTitle,
                 kind: selectedKind,
-                accountId: selectedAccountId ?? data.defaultSpendingAccount?.id,
+                accountId: selectedAccountId ?? spending.defaultSpendingAccount?.id,
                 isImpulse: isImpulse,
                 allocations: validAllocations,
                 notes: transaction.notes
             )
         } else {
-            data.updateTransaction(
+            spending.updateTransaction(
                 updated,
                 originalTransactionId: transaction.id,
                 originalGroupTitle: originalGroupTitle,
@@ -1115,6 +1104,24 @@ struct EditTransactionView: View {
             result[lastIndex].amount += delta
         }
         return result.filter { $0.amount > 0 }
+    }
+
+    private func loadSplitAllocationsIfNeeded() {
+        guard !hasLoadedSplitAllocations else { return }
+        hasLoadedSplitAllocations = true
+
+        guard let splitGroupId = transaction.splitGroupId else { return }
+        let existingSplitTransactions = spending.splitTransactions(for: splitGroupId)
+        guard !existingSplitTransactions.isEmpty else { return }
+
+        splitAllocations = existingSplitTransactions.map {
+            SplitTransactionAllocation(
+                category: $0.category,
+                amount: $0.amountValue,
+                label: $0.splitLabel ?? ""
+            )
+        }
+        isSplitTransaction = existingSplitTransactions.count > 1 || transaction.isSplitChild
     }
 
     private func ruleField(title: String, text: Binding<String>, placeholder: String) -> some View {

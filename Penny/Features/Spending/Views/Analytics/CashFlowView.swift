@@ -2,11 +2,11 @@ import SwiftUI
 
 struct CashFlowView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(TransactionData.self) private var data
+    @Environment(SpendingStore.self) private var spending
     @State private var showAddManualItem = false
 
     private var forecast: CashFlowForecast {
-        data.cashFlowForecast
+        spending.cashFlowForecast
     }
 
     var body: some View {
@@ -139,11 +139,11 @@ struct CashFlowView: View {
                     .foregroundColor(Color(red: 1.0, green: 0.55, blue: 0.36))
             }
 
-            if data.manualForecastItems.isEmpty {
+            if spending.manualForecastItems.isEmpty {
                 sectionEmptyCard("No manual forecast items yet", subtitle: "Add one-off bills or paychecks that are not part of your recurring schedules.")
             } else {
                 VStack(spacing: 8) {
-                    ForEach(data.manualForecastItems) { item in
+                    ForEach(spending.manualForecastItems) { item in
                         HStack(spacing: 12) {
                             Circle()
                                 .fill(item.kind == .income ? Color(red: 0.29, green: 0.87, blue: 0.50) : Color(red: 1.0, green: 0.42, blue: 0.16))
@@ -165,7 +165,7 @@ struct CashFlowView: View {
                                 .foregroundColor(item.kind == .income ? Color(red: 0.29, green: 0.87, blue: 0.50) : .white)
 
                             Button {
-                                data.deleteManualForecastItem(id: item.id)
+                                spending.deleteManualForecastItem(id: item.id)
                             } label: {
                                 Image(systemName: "trash")
                                     .font(.system(size: 12, weight: .semibold))
@@ -261,7 +261,7 @@ struct CashFlowView: View {
 
 private struct AddManualForecastItemView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(TransactionData.self) private var data
+    @Environment(SpendingStore.self) private var spending
 
     @State private var title = ""
     @State private var amount = ""
@@ -298,7 +298,7 @@ private struct AddManualForecastItemView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
                         let cleaned = amount.replacingOccurrences(of: ",", with: "").replacingOccurrences(of: "$", with: "")
-                        data.addManualForecastItem(
+                        spending.addManualForecastItem(
                             title: title,
                             amount: Double(cleaned) ?? 0,
                             date: date,
@@ -313,4 +313,3 @@ private struct AddManualForecastItemView: View {
         }
     }
 }
-

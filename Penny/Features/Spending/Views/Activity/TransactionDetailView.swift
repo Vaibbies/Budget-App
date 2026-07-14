@@ -5,7 +5,7 @@ import UIKit
 
 struct TransactionDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(TransactionData.self) private var data
+    @Environment(SpendingStore.self) private var spending
 
     let transactionId: UUID
 
@@ -19,18 +19,18 @@ struct TransactionDetailView: View {
     @State private var saveMessage: String?
 
     private var transaction: SpendingTransaction? {
-        data.transaction(for: transactionId)
+        spending.transaction(for: transactionId)
     }
 
     private var merchantHistory: [SpendingTransaction] {
         guard let transaction else { return [] }
-        return data.merchantHistory(for: transaction)
+        return spending.merchantHistory(for: transaction)
     }
 
     private var transactionDateString: String {
         guard
             let transaction,
-            let date = data.date(forTransactionId: transaction.id)
+            let date = spending.date(forTransactionId: transaction.id)
         else { return "Date unavailable" }
 
         let formatter = DateFormatter()
@@ -186,7 +186,7 @@ struct TransactionDetailView: View {
 
                 VStack(spacing: 10) {
                     statRow(label: "Type", value: transaction.kind.rawValue)
-                    statRow(label: "Account", value: data.accountName(for: transaction.accountId) ?? "Unassigned")
+                    statRow(label: "Account", value: spending.accountName(for: transaction.accountId) ?? "Unassigned")
                     statRow(label: "Merchant", value: transaction.merchantNormalized ?? transaction.title)
                     if transaction.kind.usesImpulseFlag {
                         Toggle(isOn: $isImpulse) {
@@ -514,7 +514,7 @@ struct TransactionDetailView: View {
     }
 
     private func historyDateString(for transaction: SpendingTransaction) -> String {
-        guard let date = data.date(forTransactionId: transaction.id) else { return transaction.time }
+        guard let date = spending.date(forTransactionId: transaction.id) else { return transaction.time }
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
         return "\(formatter.string(from: date)) • \(transaction.time)"
@@ -534,7 +534,7 @@ struct TransactionDetailView: View {
 
     private func saveChanges() {
         guard let transaction else { return }
-        data.updateTransactionDetails(
+        spending.updateTransactionDetails(
             transactionId: transaction.id,
             notes: draftNotes,
             tags: draftTags,

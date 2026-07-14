@@ -10,7 +10,7 @@ struct RootTabView: View {
     @AppStorage("penny.notifications.weeklyDigest") private var weeklyDigest = false
     @AppStorage("penny.notifications.savingTips") private var savingTips = false
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(TransactionData.self) private var data
+    @Environment(AppMaintenanceStore.self) private var maintenance
 
     var body: some View {
         ZStack {
@@ -63,42 +63,36 @@ struct RootTabView: View {
             showMindfulPause = true
         }
         .onAppear {
-            data.syncRecurringTransactions()
-            Task {
-                await refreshLocalNotifications()
-            }
+            maintenance.handleForegroundActivation(preferences: notificationPreferences)
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                data.syncRecurringTransactions()
-                Task {
-                    await refreshLocalNotifications()
-                }
+                maintenance.handleForegroundActivation(preferences: notificationPreferences)
             }
         }
         .onChange(of: billReminders) { _, _ in
             Task {
-                await refreshLocalNotifications()
+                await maintenance.refreshNotifications(preferences: notificationPreferences)
             }
         }
         .onChange(of: spendingAlerts) { _, _ in
             Task {
-                await refreshLocalNotifications()
+                await maintenance.refreshNotifications(preferences: notificationPreferences)
             }
         }
         .onChange(of: budgetWarnings) { _, _ in
             Task {
-                await refreshLocalNotifications()
+                await maintenance.refreshNotifications(preferences: notificationPreferences)
             }
         }
         .onChange(of: weeklyDigest) { _, _ in
             Task {
-                await refreshLocalNotifications()
+                await maintenance.refreshNotifications(preferences: notificationPreferences)
             }
         }
         .onChange(of: savingTips) { _, _ in
             Task {
-                await refreshLocalNotifications()
+                await maintenance.refreshNotifications(preferences: notificationPreferences)
             }
         }
     }
@@ -107,18 +101,23 @@ struct RootTabView: View {
         AppLanguage(rawValue: languageCode) ?? .english
     }
 
-    private func refreshLocalNotifications() async {
-        await LocalNotificationManager.shared.refreshNotifications(
-            using: data,
-            spendingAlertsEnabled: spendingAlerts,
-            budgetWarningsEnabled: budgetWarnings,
-            billRemindersEnabled: billReminders,
-            weeklyDigestEnabled: weeklyDigest,
-            savingTipsEnabled: savingTips
+    private var notificationPreferences: NotificationPreferences {
+        NotificationPreferences(
+            spendingAlerts: spendingAlerts,
+            budgetWarnings: budgetWarnings,
+            billReminders: billReminders,
+            weeklyDigest: weeklyDigest,
+            savingTips: savingTips
         )
     }
 }
 
 #Preview {
     RootTabView()
+        .environment(
+            AppMaintenanceStore(
+                spending: SpendingStore(data: .shared),
+                recurring: RecurringStore(data: .shared)
+            )
+        )
 }

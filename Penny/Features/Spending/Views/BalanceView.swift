@@ -1,15 +1,15 @@
 import SwiftUI
 
 struct BalanceView: View {
-    private var data = TransactionData.shared
+    @Environment(SpendingStore.self) private var spending
     var onTap: (() -> Void)? = nil
 
     init(onTap: (() -> Void)? = nil) {
         self.onTap = onTap
     }
 
-    var wholepart: String { String(format: "%.0f", floor(data.dailySpent)) }
-    var centsPart: String { String(format: "%02.0f", (data.dailySpent.truncatingRemainder(dividingBy: 1)) * 100) }
+    var wholepart: String { String(format: "%.0f", floor(spending.dailySpent)) }
+    var centsPart: String { String(format: "%02.0f", (spending.dailySpent.truncatingRemainder(dividingBy: 1)) * 100) }
 
     var body: some View {
         Button {
@@ -44,7 +44,7 @@ struct BalanceView: View {
                         .frame(width: 6, height: 6)
                         .shadow(color: Color(red: 1.0, green: 0.42, blue: 0.16), radius: 3)
 
-                    Text("$\(String(format: "%.2f", data.dailyRemaining)) remaining")
+                    Text("$\(String(format: "%.2f", spending.dailyRemaining)) remaining")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.7))
                 }

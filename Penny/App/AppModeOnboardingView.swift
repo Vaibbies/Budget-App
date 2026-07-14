@@ -3,6 +3,20 @@ import SwiftUI
 struct AppModeOnboardingView: View {
     @Environment(AppSessionStore.self) private var session
 
+    private var isActivating: Bool {
+        if case .activating = session.startupState {
+            return true
+        }
+        return false
+    }
+
+    private var activatingTitle: String {
+        guard case let .activating(mode) = session.startupState else {
+            return ""
+        }
+        return mode == .demo ? "Loading demo budget" : "Preparing your budget"
+    }
+
     var body: some View {
         ZStack {
             LinearGradient(
@@ -62,6 +76,36 @@ struct AppModeOnboardingView: View {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 32)
+
+            if isActivating {
+                ZStack {
+                    Color.black.opacity(0.35).ignoresSafeArea()
+
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(1.1)
+
+                        Text(activatingTitle)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(.white)
+
+                        Text("This should only take a moment.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white.opacity(0.65))
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                    )
+                }
+            }
         }
     }
 
@@ -142,5 +186,7 @@ struct AppModeOnboardingView: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(isActivating)
+        .opacity(isActivating ? 0.6 : 1.0)
     }
 }

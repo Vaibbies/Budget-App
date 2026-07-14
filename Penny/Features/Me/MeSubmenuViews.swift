@@ -251,10 +251,10 @@ struct PennyAISettingsView: View {
 }
 
 struct BudgetGoalsView: View {
-    private let data = TransactionData.shared
+    @Environment(SpendingStore.self) private var spending
 
     private var savingsGoalRows: [MeDetailRowModel] {
-        if data.savingsGoals.isEmpty {
+        if spending.savingsGoals.isEmpty {
             return [
                 MeDetailRowModel(
                     icon: "target",
@@ -265,7 +265,7 @@ struct BudgetGoalsView: View {
             ]
         }
 
-        return data.savingsGoals.map {
+        return spending.savingsGoals.map {
             MeDetailRowModel(
                 icon: "target",
                 title: $0.name,
@@ -283,9 +283,9 @@ struct BudgetGoalsView: View {
                 MeDetailSectionModel(
                     title: "Budget Health",
                     rows: [
-                        MeDetailRowModel(icon: "chart.pie.fill", title: "Monthly Budget", subtitle: "Configured budget across tracked categories", value: "$\(Int(data.totalMonthlyBudget))"),
-                        MeDetailRowModel(icon: "arrow.down.circle.fill", title: "Month-to-Date Spend", subtitle: "Budgetable spending this month", value: "$\(Int(data.monthlySpent))"),
-                        MeDetailRowModel(icon: "checkmark.seal.fill", title: "Safe to Spend", subtitle: "After accounting for upcoming bills", value: "$\(Int(data.safeToSpendThisMonth))", valueColor: MeTheme.success)
+                        MeDetailRowModel(icon: "chart.pie.fill", title: "Monthly Budget", subtitle: "Configured budget across tracked categories", value: "$\(Int(spending.totalMonthlyBudget))"),
+                        MeDetailRowModel(icon: "arrow.down.circle.fill", title: "Month-to-Date Spend", subtitle: "Budgetable spending this month", value: "$\(Int(spending.monthlySpent))"),
+                        MeDetailRowModel(icon: "checkmark.seal.fill", title: "Safe to Spend", subtitle: "After accounting for upcoming bills", value: "$\(Int(spending.safeToSpendThisMonth))", valueColor: MeTheme.success)
                     ]
                 ),
                 MeDetailSectionModel(

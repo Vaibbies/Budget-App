@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct PennyApp: App {
-    @State private var container = AppContainer.shared
+    @State private var container = AppContainer()
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
     
     var body: some Scene {
@@ -14,10 +14,12 @@ struct PennyApp: App {
                     AppModeOnboardingView()
                 }
             }
-            .environment(container)
-            .environment(container.data)
             .environment(container.platform)
             .environment(container.session)
+            .environment(container.spending)
+            .environment(container.bank)
+            .environment(container.recurring)
+            .environment(container.maintenance)
             .environment(\.locale, Locale(identifier: currentLocaleIdentifier))
         }
     }
