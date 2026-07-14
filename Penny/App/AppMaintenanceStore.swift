@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UserNotifications
 
 struct NotificationPreferences: Equatable {
     let spendingAlerts: Bool
@@ -14,7 +15,7 @@ struct NotificationPreferences: Equatable {
 final class AppMaintenanceStore {
     private let spending: SpendingStore
     private let recurring: RecurringStore
-    private let notificationManager: LocalNotificationManager
+    private let notificationManager: any NotificationManaging
     private let minimumForegroundRefreshInterval: TimeInterval
 
     private var lastForegroundRefreshAt: Date?
@@ -22,12 +23,12 @@ final class AppMaintenanceStore {
     init(
         spending: SpendingStore,
         recurring: RecurringStore,
-        notificationManager: LocalNotificationManager = .shared,
+        notificationManager: (any NotificationManaging)? = nil,
         minimumForegroundRefreshInterval: TimeInterval = 5
     ) {
         self.spending = spending
         self.recurring = recurring
-        self.notificationManager = notificationManager
+        self.notificationManager = notificationManager ?? LocalNotificationManager.shared
         self.minimumForegroundRefreshInterval = minimumForegroundRefreshInterval
     }
 
@@ -56,5 +57,17 @@ final class AppMaintenanceStore {
             weeklyDigestEnabled: preferences.weeklyDigest,
             savingTipsEnabled: preferences.savingTips
         )
+    }
+
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await notificationManager.authorizationStatus()
+    }
+
+    func requestNotificationAuthorization() async -> Bool {
+        await notificationManager.requestAuthorization()
+    }
+
+    func scheduleTestNotification(after seconds: TimeInterval = 5) async {
+        await notificationManager.scheduleTestNotification(after: seconds)
     }
 }

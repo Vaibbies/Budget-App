@@ -70,11 +70,11 @@ struct NotificationsSettingsView: View {
                         description: "Schedules a local notification in 5 seconds."
                     ) {
                         Task {
-                            let manager = LocalNotificationManager.shared
-                            let alreadyAuthorized = await manager.isAuthorizedForUI
-                            let granted = alreadyAuthorized ? true : await manager.requestAuthorization()
+                            let status = await maintenance.authorizationStatus()
+                            let alreadyAuthorized = status.isEnabled
+                            let granted = alreadyAuthorized ? true : await maintenance.requestNotificationAuthorization()
                             guard granted else { return }
-                            await manager.scheduleTestNotification()
+                            await maintenance.scheduleTestNotification()
                             await refreshAuthorizationStatus()
                         }
                     }
@@ -212,7 +212,7 @@ struct NotificationsSettingsView: View {
 
             Button(authorizationActionTitle) {
                 Task {
-                    _ = await LocalNotificationManager.shared.requestAuthorization()
+                    _ = await maintenance.requestNotificationAuthorization()
                     await refreshAuthorizationStatus()
                     await refreshLocalNotifications()
                 }
@@ -300,12 +300,12 @@ struct NotificationsSettingsView: View {
     }
 
     private func refreshAuthorizationStatus() async {
-        authorizationStatus = await LocalNotificationManager.shared.authorizationStatus()
+        authorizationStatus = await maintenance.authorizationStatus()
     }
 
     private func refreshLocalNotifications() async {
         if authorizationStatus == .notDetermined {
-            _ = await LocalNotificationManager.shared.requestAuthorization()
+            _ = await maintenance.requestNotificationAuthorization()
             await refreshAuthorizationStatus()
         }
 
@@ -322,7 +322,7 @@ struct NotificationsSettingsView: View {
 }
 
 #Preview {
-    let container = AppContainer.preview
+    let container = makePreviewAppContainer()
     NotificationsSettingsView()
         .preferredColorScheme(.dark)
         .environment(container.maintenance)

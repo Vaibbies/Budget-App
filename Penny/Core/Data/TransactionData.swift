@@ -994,6 +994,16 @@ class TransactionData: AppSessionDataStore, TransactionMutationBacking, Spending
         TransactionRulesEngine.normalizeAndApplyRules(to: transaction, context: rulesContext)
     }
 
+    private var transactionEditingContext: TransactionEditingEngine.Context {
+        TransactionEditingEngine.Context(
+            defaultSpendingAccountId: defaultSpendingAccount?.id,
+            normalizeAndApplyRules: { [self] in normalizeAndApplyRules(to: $0) },
+            normalizeMerchant: { [self] in normalizeMerchant($0) },
+            resolveGroupDate: { title, now in Self.resolvedDate(forGroupTitle: title, now: now) },
+            dayLabel: { date in RecurringEngine.dayLabel(for: date) }
+        )
+    }
+
     func upsertMerchantRule(
         matchPattern: String,
         categoryOverride: SpendingCategory?,
@@ -1183,76 +1193,24 @@ class TransactionData: AppSessionDataStore, TransactionMutationBacking, Spending
 
     @discardableResult
     func removeTransaction(id: UUID) -> Bool {
-        for groupIndex in groups.indices {
-            if let txIndex = groups[groupIndex].transactions.firstIndex(where: { $0.id == id }) {
-                var updatedTransactions = groups[groupIndex].transactions
-                updatedTransactions.remove(at: txIndex)
-
-                if updatedTransactions.isEmpty {
-                    groups.remove(at: groupIndex)
-                } else {
-                    groups[groupIndex] = SpendingTransactionGroup(
-                        id: groups[groupIndex].id,
-                        title: groups[groupIndex].title,
-                        transactions: updatedTransactions
-                    )
-                }
-
-                return true
-            }
-        }
-
-        return false
+        let result = TransactionEditingEngine.removeTransaction(id: id, from: groups)
+        groups = result.groups
+        return result.removed
     }
 
     @discardableResult
     func removeSplitGroup(id: UUID) -> Int {
-        var removedCount = 0
-        for groupIndex in groups.indices.reversed() {
-            let remaining = groups[groupIndex].transactions.filter { $0.splitGroupId != id }
-            removedCount += groups[groupIndex].transactions.count - remaining.count
-
-            if remaining.isEmpty {
-                groups.remove(at: groupIndex)
-            } else if remaining.count != groups[groupIndex].transactions.count {
-                groups[groupIndex] = SpendingTransactionGroup(
-                    id: groups[groupIndex].id,
-                    title: groups[groupIndex].title,
-                    transactions: remaining
-                )
-            }
-        }
-        return removedCount
+        let result = TransactionEditingEngine.removeSplitGroup(id: id, from: groups)
+        groups = result.groups
+        return result.removedCount
     }
 
     func addTransaction(_ transaction: SpendingTransaction, on date: Date) {
-        let dayLabel = RecurringEngine.dayLabel(for: date)
-
-        if let index = groups.firstIndex(where: { $0.title == dayLabel }) {
-            var updated = groups[index].transactions
-            updated.insert(normalizeAndApplyRules(to: transaction), at: 0)
-            groups[index] = SpendingTransactionGroup(
-                id: groups[index].id,
-                title: groups[index].title,
-                transactions: updated
-            )
-            return
-        }
-
-        let insertIndex = groups.firstIndex(where: { group in
-            guard group.title != "Today" && group.title != "Yesterday" else { return false }
-            if let groupDate = Self.resolvedDate(forGroupTitle: group.title, now: date) {
-                return groupDate < date
-            }
-            return false
-        }) ?? groups.endIndex
-
-        groups.insert(
-            SpendingTransactionGroup(
-                title: dayLabel,
-                transactions: [normalizeAndApplyRules(to: transaction)]
-            ),
-            at: insertIndex
+        groups = TransactionEditingEngine.addTransaction(
+            transaction,
+            on: date,
+            to: groups,
+            context: transactionEditingContext
         )
     }
 
@@ -1263,44 +1221,15 @@ class TransactionData: AppSessionDataStore, TransactionMutationBacking, Spending
         originalGroupDate: Date,
         newDate: Date
     ) {
-        let newDayLabel: String
-        if Calendar.current.isDate(newDate, inSameDayAs: originalGroupDate) {
-            newDayLabel = originalGroupTitle
-        } else {
-            newDayLabel = RecurringEngine.dayLabel(for: newDate)
-        }
-
-        let originalGroupIndex = groups.firstIndex(where: { $0.title == originalGroupTitle })
-        let originalInsertIndex = originalGroupIndex.flatMap { groupIndex in
-            groups[groupIndex].transactions.firstIndex(where: { $0.id == originalTransactionId })
-        } ?? 0
-
-        _ = removeTransaction(id: originalTransactionId)
-
-        let normalized = normalizeAndApplyRules(to: transaction)
-        if let existingIndex = groups.firstIndex(where: { $0.title == newDayLabel }) {
-            var txns = groups[existingIndex].transactions
-            let insertAt = newDayLabel == originalGroupTitle ? min(originalInsertIndex, txns.count) : 0
-            txns.insert(normalized, at: insertAt)
-            groups[existingIndex] = SpendingTransactionGroup(
-                id: groups[existingIndex].id,
-                title: groups[existingIndex].title,
-                transactions: txns
-            )
-        } else {
-            let insertIndex = groups.firstIndex(where: { group in
-                guard group.title != "Today" && group.title != "Yesterday" else { return false }
-                if let groupDate = Self.resolvedDate(forGroupTitle: group.title, now: newDate) {
-                    return groupDate < newDate
-                }
-                return false
-            }) ?? groups.endIndex
-
-            groups.insert(
-                SpendingTransactionGroup(title: newDayLabel, transactions: [normalized]),
-                at: insertIndex
-            )
-        }
+        groups = TransactionEditingEngine.updateTransaction(
+            transaction,
+            originalTransactionId: originalTransactionId,
+            originalGroupTitle: originalGroupTitle,
+            originalGroupDate: originalGroupDate,
+            newDate: newDate,
+            in: groups,
+            context: transactionEditingContext
+        )
     }
 
     func replaceTransactionWithSplit(
@@ -1315,47 +1244,18 @@ class TransactionData: AppSessionDataStore, TransactionMutationBacking, Spending
         allocations: [SplitTransactionAllocation],
         notes: String? = nil
     ) {
-        let rawTitle = merchantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? transaction.title
-            : merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let splitGroupId = transaction.splitGroupId ?? UUID()
-
-        if let splitGroupId = transaction.splitGroupId {
-            _ = removeSplitGroup(id: splitGroupId)
-        } else {
-            _ = removeTransaction(id: transaction.id)
-        }
-
-        for allocation in allocations where allocation.amount > 0 {
-            let splitTitle = allocation.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = splitTitle.isEmpty ? rawTitle : "\(rawTitle) • \(splitTitle)"
-
-            let splitTransaction = normalizeAndApplyRules(to: SpendingTransaction(
-                icon: allocation.category.icon,
-                title: title,
-                subtitle: allocation.category.rawValue,
-                time: transaction.time,
-                amount: kind.signedAmountString(for: allocation.amount),
-                isImpulse: kind.usesImpulseFlag ? isImpulse : false,
-                iconColor: allocation.category.color,
-                bgColor: allocation.category.color.opacity(0.1),
-                borderColor: allocation.category.color.opacity(0.2),
-                category: allocation.category,
-                accountId: accountId ?? defaultSpendingAccount?.id,
-                kind: kind,
-                merchantRaw: rawTitle,
-                merchantNormalized: normalizeMerchant(rawTitle),
-                notes: notes,
-                tags: Array(Set(transaction.tags + ["split"])).sorted(),
-                attachments: transaction.attachments,
-                isExcludedFromBudget: transaction.isExcludedFromBudget,
-                isRecurringCandidate: transaction.isRecurringCandidate,
-                splitGroupId: splitGroupId,
-                splitLabel: allocation.label.nilIfEmpty
-            ))
-
-            addTransaction(splitTransaction, on: newDate)
-        }
+        groups = TransactionEditingEngine.replaceTransactionWithSplit(
+            original: transaction,
+            newDate: newDate,
+            merchantName: merchantName,
+            kind: kind,
+            accountId: accountId,
+            isImpulse: isImpulse,
+            allocations: allocations,
+            notes: notes,
+            in: groups,
+            context: transactionEditingContext
+        )
     }
 
     func addSplitTransactions(
@@ -1368,45 +1268,26 @@ class TransactionData: AppSessionDataStore, TransactionMutationBacking, Spending
         allocations: [SplitTransactionAllocation],
         notes: String? = nil
     ) {
-        let rawTitle = merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let splitGroupId = UUID()
-
-        for allocation in allocations where allocation.amount > 0 {
-            let splitTitle = allocation.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = splitTitle.isEmpty ? rawTitle : "\(rawTitle) • \(splitTitle)"
-
-            let splitTransaction = normalizeAndApplyRules(to: SpendingTransaction(
-                icon: allocation.category.icon,
-                title: title,
-                subtitle: allocation.category.rawValue,
-                time: time,
-                amount: kind.signedAmountString(for: allocation.amount),
-                isImpulse: kind.usesImpulseFlag ? isImpulse : false,
-                iconColor: allocation.category.color,
-                bgColor: allocation.category.color.opacity(0.1),
-                borderColor: allocation.category.color.opacity(0.2),
-                category: allocation.category,
-                accountId: accountId ?? defaultSpendingAccount?.id,
-                kind: kind,
-                merchantRaw: rawTitle,
-                merchantNormalized: normalizeMerchant(rawTitle),
-                notes: notes,
-                tags: ["split"],
-                attachments: [],
-                splitGroupId: splitGroupId,
-                splitLabel: allocation.label.nilIfEmpty
-            ))
-
-            addTransaction(splitTransaction, on: date)
-        }
+        groups = TransactionEditingEngine.addSplitTransactions(
+            merchantName: merchantName,
+            kind: kind,
+            accountId: accountId,
+            isImpulse: isImpulse,
+            date: date,
+            time: time,
+            allocations: allocations,
+            notes: notes,
+            to: groups,
+            context: transactionEditingContext
+        )
     }
 
     func splitTransactions(for splitGroupId: UUID) -> [SpendingTransaction] {
-        allTransactions.filter { $0.splitGroupId == splitGroupId }
+        TransactionEditingEngine.splitTransactions(for: splitGroupId, in: groups)
     }
 
     func transaction(for id: UUID) -> SpendingTransaction? {
-        allTransactions.first(where: { $0.id == id })
+        TransactionEditingEngine.transaction(for: id, in: groups)
     }
 
     func updateTransactionDetails(
@@ -1416,69 +1297,14 @@ class TransactionData: AppSessionDataStore, TransactionMutationBacking, Spending
         isImpulse: Bool,
         attachments: [TransactionAttachment]
     ) {
-        guard let transaction = transaction(for: transactionId) else { return }
-
-        let normalizedNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        let normalizedTags = Array(
-            Set(
-                tags
-                    .map {
-                        $0
-                            .replacingOccurrences(of: "#", with: "")
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                    }
-                    .filter { !$0.isEmpty }
-            )
-        ).sorted()
-
-        let targetIds: Set<UUID>
-        if let splitGroupId = transaction.splitGroupId {
-            targetIds = Set(splitTransactions(for: splitGroupId).map(\.id))
-        } else {
-            targetIds = [transactionId]
-        }
-
-        for groupIndex in groups.indices {
-            var updatedTransactions = groups[groupIndex].transactions
-            var didChange = false
-
-            for txIndex in updatedTransactions.indices where targetIds.contains(updatedTransactions[txIndex].id) {
-                let existing = updatedTransactions[txIndex]
-                updatedTransactions[txIndex] = SpendingTransaction(
-                    id: existing.id,
-                    icon: existing.icon,
-                    title: existing.title,
-                    subtitle: existing.subtitle,
-                    time: existing.time,
-                    amount: existing.amount,
-                    isImpulse: existing.kind.usesImpulseFlag ? isImpulse : false,
-                    iconColor: existing.iconColor,
-                    bgColor: existing.bgColor,
-                    borderColor: existing.borderColor,
-                    category: existing.category,
-                    accountId: existing.accountId,
-                    kind: existing.kind,
-                    merchantRaw: existing.merchantRaw,
-                    merchantNormalized: existing.merchantNormalized,
-                    notes: normalizedNotes,
-                    tags: normalizedTags,
-                    attachments: attachments,
-                    isExcludedFromBudget: existing.isExcludedFromBudget,
-                    isRecurringCandidate: existing.isRecurringCandidate,
-                    splitGroupId: existing.splitGroupId,
-                    splitLabel: existing.splitLabel
-                )
-                didChange = true
-            }
-
-            if didChange {
-                groups[groupIndex] = SpendingTransactionGroup(
-                    id: groups[groupIndex].id,
-                    title: groups[groupIndex].title,
-                    transactions: updatedTransactions
-                )
-            }
-        }
+        groups = TransactionEditingEngine.updateTransactionDetails(
+            transactionId: transactionId,
+            notes: notes,
+            tags: tags,
+            isImpulse: isImpulse,
+            attachments: attachments,
+            in: groups
+        )
     }
 
     func isDuplicateTransaction(

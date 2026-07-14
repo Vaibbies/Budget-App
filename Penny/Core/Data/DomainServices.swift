@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class TransactionMutationService {
+final class TransactionsService {
     private let data: any TransactionMutationBacking
 
     init(data: any TransactionMutationBacking) {
@@ -100,6 +100,15 @@ final class TransactionMutationService {
             notes: notes
         )
     }
+}
+
+@MainActor
+final class ForecastService {
+    private let data: any TransactionMutationBacking
+
+    init(data: any TransactionMutationBacking) {
+        self.data = data
+    }
 
     func deleteManualForecastItem(id: UUID) {
         data.deleteManualForecastItem(id: id)
@@ -120,6 +129,15 @@ final class TransactionMutationService {
             note: note
         )
     }
+}
+
+@MainActor
+final class MerchantRulesService {
+    private let data: any TransactionMutationBacking
+
+    init(data: any TransactionMutationBacking) {
+        self.data = data
+    }
 
     func upsertMerchantRule(
         matchPattern: String,
@@ -134,6 +152,15 @@ final class TransactionMutationService {
             recurringHint: recurringHint
         )
     }
+}
+
+@MainActor
+final class RecurringManagementService {
+    private let data: any TransactionMutationBacking
+
+    init(data: any TransactionMutationBacking) {
+        self.data = data
+    }
 
     func addSubscription(
         _ sub: RecurringSubscription,
@@ -147,7 +174,7 @@ final class TransactionMutationService {
         )
     }
 
-    func updateRecurringStatus(_ id: UUID, status: RecurringStatus) {
+    func updateStatus(_ id: UUID, status: RecurringStatus) {
         data.updateRecurringStatus(id, status: status)
     }
 
@@ -158,6 +185,15 @@ final class TransactionMutationService {
     func syncRecurringTransactions() {
         data.syncRecurringTransactions()
     }
+}
+
+@MainActor
+final class AccountsService {
+    private let data: any TransactionMutationBacking
+
+    init(data: any TransactionMutationBacking) {
+        self.data = data
+    }
 
     func upsertAccount(_ account: Account) {
         data.upsertAccount(account)
@@ -166,16 +202,34 @@ final class TransactionMutationService {
     func deleteAccount(id: UUID) {
         data.deleteAccount(id: id)
     }
+}
+
+@MainActor
+final class BudgetSettingsService {
+    private let data: any TransactionMutationBacking
+
+    init(data: any TransactionMutationBacking) {
+        self.data = data
+    }
 
     func setBudget(mode: BudgetMode, value: Double) {
         data.setBudget(mode: mode, value: value)
     }
+}
 
-    func upsertInvestmentHolding(_ holding: InvestmentHolding) {
+@MainActor
+final class InvestmentsService {
+    private let data: any TransactionMutationBacking
+
+    init(data: any TransactionMutationBacking) {
+        self.data = data
+    }
+
+    func upsertHolding(_ holding: InvestmentHolding) {
         data.upsertInvestmentHolding(holding)
     }
 
-    func deleteInvestmentHolding(id: UUID) {
+    func deleteHolding(id: UUID) {
         data.deleteInvestmentHolding(id: id)
     }
 }

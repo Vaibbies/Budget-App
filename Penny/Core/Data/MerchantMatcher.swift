@@ -1,12 +1,10 @@
 import Foundation
 
 final class MerchantMatcher {
-    static let shared = MerchantMatcher()
-
     private let map: [String: String]
     private let keysByLengthDesc: [String]
 
-    private init() {
+    init() {
         self.map = Self.loadMapFromBundle(named: "merchant_domains_pro") ?? [:]
         self.keysByLengthDesc = map.keys.sorted { $0.count > $1.count }
     }

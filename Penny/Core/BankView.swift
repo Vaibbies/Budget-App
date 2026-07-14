@@ -1768,7 +1768,7 @@ private struct InvestmentHoldingEditorView: View {
 }
 
 #Preview {
-    let container = AppContainer.preview
+    let container = makePreviewAppContainer()
     BankView()
         .environment(container.bank)
 }

@@ -4,92 +4,116 @@ import Observation
 @MainActor
 @Observable
 final class SpendingStore {
-    private let data: any SpendingDataStore
-    private let mutations: TransactionMutationService
+    private let accountsRepository: any AccountsRepository
+    private let transactionsRepository: any TransactionsRepository
+    private let recurringRepository: any RecurringRepository
+    private let forecastRepository: any ForecastRepository
+    private let budgetRepository: any BudgetRepository
+    private let investmentsRepository: any InvestmentsRepository
+    private let transactionsService: TransactionsService
+    private let recurringService: RecurringManagementService
+    private let forecastService: ForecastService
+    private let merchantRulesService: MerchantRulesService
 
     init(
-        data: any SpendingDataStore,
-        mutations: TransactionMutationService
+        accountsRepository: any AccountsRepository,
+        transactionsRepository: any TransactionsRepository,
+        recurringRepository: any RecurringRepository,
+        forecastRepository: any ForecastRepository,
+        budgetRepository: any BudgetRepository,
+        investmentsRepository: any InvestmentsRepository,
+        transactionsService: TransactionsService,
+        recurringService: RecurringManagementService,
+        forecastService: ForecastService,
+        merchantRulesService: MerchantRulesService
     ) {
-        self.data = data
-        self.mutations = mutations
+        self.accountsRepository = accountsRepository
+        self.transactionsRepository = transactionsRepository
+        self.recurringRepository = recurringRepository
+        self.forecastRepository = forecastRepository
+        self.budgetRepository = budgetRepository
+        self.investmentsRepository = investmentsRepository
+        self.transactionsService = transactionsService
+        self.recurringService = recurringService
+        self.forecastService = forecastService
+        self.merchantRulesService = merchantRulesService
     }
 
-    var groups: [SpendingTransactionGroup] { data.groups }
-    var allTransactions: [SpendingTransaction] { data.allTransactions }
-    var accounts: [Account] { data.accounts }
-    var subscriptions: [RecurringSubscription] { data.subscriptions }
-    var savingsGoals: [SavingsGoal] { data.savingsGoals }
-    var visibleAccounts: [Account] { data.visibleAccounts }
-    var recentTransactions: [SpendingTransaction] { data.recentTransactions }
-    var dailySpent: Double { data.dailySpent }
-    var dailyRemaining: Double { data.dailyRemaining }
-    var totalSpent: Double { data.totalSpent }
-    var transactionCount: Int { data.transactionCount }
-    var topCategories: [CategoryData] { data.topCategories }
-    var categoryTotals: [CategoryData] { data.categoryTotals }
-    var monthlySpent: Double { data.monthlySpent }
-    var monthlyIncome: Double { data.monthlyIncome }
-    var monthlyNet: Double { data.monthlyNet }
-    var totalMonthlyBudget: Double { data.totalMonthlyBudget }
-    var safeToSpendThisMonth: Double { data.safeToSpendThisMonth }
-    var cashFlowForecast: CashFlowForecast { data.cashFlowForecast }
-    var manualForecastItems: [ManualForecastItem] { data.manualForecastItems }
-    var defaultSpendingAccount: Account? { data.defaultSpendingAccount }
-    var dailyBudget: Double { data.dailyBudget }
+    var groups: [SpendingTransactionGroup] { transactionsRepository.groups }
+    var allTransactions: [SpendingTransaction] { transactionsRepository.allTransactions }
+    var accounts: [Account] { accountsRepository.accounts }
+    var subscriptions: [RecurringSubscription] { recurringRepository.subscriptions }
+    var savingsGoals: [SavingsGoal] { investmentsRepository.savingsGoals }
+    var visibleAccounts: [Account] { accountsRepository.visibleAccounts }
+    var recentTransactions: [SpendingTransaction] { transactionsRepository.recentTransactions }
+    var dailySpent: Double { transactionsRepository.dailySpent }
+    var dailyRemaining: Double { transactionsRepository.dailyRemaining }
+    var totalSpent: Double { transactionsRepository.totalSpent }
+    var transactionCount: Int { transactionsRepository.transactionCount }
+    var topCategories: [CategoryData] { transactionsRepository.topCategories }
+    var categoryTotals: [CategoryData] { transactionsRepository.categoryTotals }
+    var monthlySpent: Double { transactionsRepository.monthlySpent }
+    var monthlyIncome: Double { transactionsRepository.monthlyIncome }
+    var monthlyNet: Double { transactionsRepository.monthlyNet }
+    var totalMonthlyBudget: Double { budgetRepository.totalMonthlyBudget }
+    var safeToSpendThisMonth: Double { budgetRepository.safeToSpendThisMonth }
+    var cashFlowForecast: CashFlowForecast { forecastRepository.cashFlowForecast }
+    var manualForecastItems: [ManualForecastItem] { forecastRepository.manualForecastItems }
+    var defaultSpendingAccount: Account? { accountsRepository.defaultSpendingAccount }
+    var dailyBudget: Double { budgetRepository.dailyBudget }
 
     var notificationSnapshot: NotificationRefreshSnapshot {
         NotificationRefreshSnapshot(
-            subscriptions: data.subscriptions,
-            manualForecastItems: data.manualForecastItems,
-            dailySpent: data.dailySpent,
-            dailyRemaining: data.dailyRemaining,
-            dailyBudget: data.dailyBudget,
-            totalMonthlyBudget: data.totalMonthlyBudget,
-            safeToSpendThisMonth: data.safeToSpendThisMonth,
-            topCategories: data.topCategories
+            subscriptions: recurringRepository.subscriptions,
+            manualForecastItems: forecastRepository.manualForecastItems,
+            dailySpent: transactionsRepository.dailySpent,
+            dailyRemaining: transactionsRepository.dailyRemaining,
+            dailyBudget: budgetRepository.dailyBudget,
+            totalMonthlyBudget: budgetRepository.totalMonthlyBudget,
+            safeToSpendThisMonth: budgetRepository.safeToSpendThisMonth,
+            topCategories: transactionsRepository.topCategories
         )
     }
 
     func monthToDateComparison(referenceDate: Date = Date()) -> MonthlyComparison {
-        data.monthToDateComparison(referenceDate: referenceDate)
+        transactionsRepository.monthToDateComparison(referenceDate: referenceDate)
     }
 
     func isGroupInToday(_ group: SpendingTransactionGroup, now: Date = Date()) -> Bool {
-        data.isGroupInToday(group, now: now)
+        transactionsRepository.isGroupInToday(group, now: now)
     }
 
     @discardableResult
     func removeTransaction(id: UUID) -> Bool {
-        mutations.removeTransaction(id: id)
+        transactionsService.removeTransaction(id: id)
     }
 
     func importCSVTransactions(from csv: String, defaultAccountId: UUID? = nil) -> TransactionImportSummary {
-        mutations.importCSVTransactions(from: csv, defaultAccountId: defaultAccountId)
+        transactionsService.importCSVTransactions(from: csv, defaultAccountId: defaultAccountId)
     }
 
     func accountName(for id: UUID?) -> String? {
-        data.accountName(for: id)
+        accountsRepository.accountName(for: id)
     }
 
     func syncRecurringTransactions() {
-        mutations.syncRecurringTransactions()
+        recurringService.syncRecurringTransactions()
     }
 
     func splitTransactions(for splitGroupId: UUID) -> [SpendingTransaction] {
-        data.splitTransactions(for: splitGroupId)
+        transactionsRepository.splitTransactions(for: splitGroupId)
     }
 
     func normalizeAndApplyRules(to transaction: SpendingTransaction) -> SpendingTransaction {
-        data.normalizeAndApplyRules(to: transaction)
+        transactionsRepository.normalizeAndApplyRules(to: transaction)
     }
 
     func normalizeMerchant(_ merchant: String) -> String {
-        data.normalizeMerchant(merchant)
+        transactionsRepository.normalizeMerchant(merchant)
     }
 
     func addTransaction(_ transaction: SpendingTransaction, on date: Date) {
-        mutations.addTransaction(transaction, on: date)
+        transactionsService.addTransaction(transaction, on: date)
     }
 
     func addSplitTransactions(
@@ -102,7 +126,7 @@ final class SpendingStore {
         allocations: [SplitTransactionAllocation],
         notes: String? = nil
     ) {
-        mutations.addSplitTransactions(
+        transactionsService.addSplitTransactions(
             merchantName: merchantName,
             kind: kind,
             accountId: accountId,
@@ -115,15 +139,15 @@ final class SpendingStore {
     }
 
     func transaction(for id: UUID) -> SpendingTransaction? {
-        data.transaction(for: id)
+        transactionsRepository.transaction(for: id)
     }
 
     func merchantHistory(for transaction: SpendingTransaction, limit: Int = 8) -> [SpendingTransaction] {
-        data.merchantHistory(for: transaction, limit: limit)
+        transactionsRepository.merchantHistory(for: transaction, limit: limit)
     }
 
     func date(forTransactionId transactionId: UUID, referenceDate: Date = Date()) -> Date? {
-        data.date(forTransactionId: transactionId, referenceDate: referenceDate)
+        transactionsRepository.date(forTransactionId: transactionId, referenceDate: referenceDate)
     }
 
     func updateTransactionDetails(
@@ -133,7 +157,7 @@ final class SpendingStore {
         isImpulse: Bool,
         attachments: [TransactionAttachment]
     ) {
-        mutations.updateTransactionDetails(
+        transactionsService.updateTransactionDetails(
             transactionId: transactionId,
             notes: notes,
             tags: tags,
@@ -143,7 +167,7 @@ final class SpendingStore {
     }
 
     func deleteManualForecastItem(id: UUID) {
-        mutations.deleteManualForecastItem(id: id)
+        forecastService.deleteManualForecastItem(id: id)
     }
 
     func addManualForecastItem(
@@ -153,7 +177,7 @@ final class SpendingStore {
         kind: ManualForecastItem.Kind,
         note: String?
     ) {
-        mutations.addManualForecastItem(
+        forecastService.addManualForecastItem(
             title: title,
             amount: amount,
             date: date,
@@ -168,7 +192,7 @@ final class SpendingStore {
         merchantDisplayName: String?,
         recurringHint: Bool
     ) {
-        mutations.upsertMerchantRule(
+        merchantRulesService.upsertMerchantRule(
             matchPattern: matchPattern,
             categoryOverride: categoryOverride,
             merchantDisplayName: merchantDisplayName,
@@ -188,7 +212,7 @@ final class SpendingStore {
         allocations: [SplitTransactionAllocation],
         notes: String? = nil
     ) {
-        mutations.replaceTransactionWithSplit(
+        transactionsService.replaceTransactionWithSplit(
             original: transaction,
             originalGroupTitle: originalGroupTitle,
             originalGroupDate: originalGroupDate,
@@ -209,7 +233,7 @@ final class SpendingStore {
         originalGroupDate: Date,
         newDate: Date
     ) {
-        mutations.updateTransaction(
+        transactionsService.updateTransaction(
             transaction,
             originalTransactionId: originalTransactionId,
             originalGroupTitle: originalGroupTitle,

@@ -1,6 +1,20 @@
 import Foundation
 import UserNotifications
 
+protocol NotificationManaging: AnyObject {
+    func authorizationStatus() async -> UNAuthorizationStatus
+    func requestAuthorization() async -> Bool
+    func refreshNotifications(
+        using snapshot: NotificationRefreshSnapshot,
+        spendingAlertsEnabled: Bool,
+        budgetWarningsEnabled: Bool,
+        billRemindersEnabled: Bool,
+        weeklyDigestEnabled: Bool,
+        savingTipsEnabled: Bool
+    ) async
+    func scheduleTestNotification(after seconds: TimeInterval) async
+}
+
 struct NotificationRefreshSnapshot {
     let subscriptions: [RecurringSubscription]
     let manualForecastItems: [ManualForecastItem]
@@ -12,7 +26,7 @@ struct NotificationRefreshSnapshot {
     let topCategories: [CategoryData]
 }
 
-final class LocalNotificationManager {
+final class LocalNotificationManager: NotificationManaging {
     static let shared = LocalNotificationManager()
 
     private let center = UNUserNotificationCenter.current()
@@ -277,7 +291,7 @@ final class LocalNotificationManager {
     private func currency(_ amount: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.currencyCode = Locale.current.currencyCode ?? "USD"
+        formatter.currencyCode = Locale.current.currency?.identifier ?? "USD"
         formatter.maximumFractionDigits = 2
         return formatter.string(from: NSNumber(value: amount)) ?? String(format: "$%.2f", amount)
     }

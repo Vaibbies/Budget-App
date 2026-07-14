@@ -113,7 +113,7 @@ struct RootTabView: View {
 }
 
 #Preview {
-    let container = AppContainer.preview
+    let container = makePreviewAppContainer()
     RootTabView()
         .environment(container.maintenance)
 }

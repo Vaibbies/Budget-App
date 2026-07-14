@@ -517,7 +517,10 @@ let categoryFallbackIcons: [String: String] = [
     "Other": "ellipsis.circle.fill",
 ]
 
-func brandLogoURL(for name: String) -> URL? {
+func brandLogoURL(
+    for name: String,
+    merchantMatcher: MerchantMatcher = MerchantMatcher()
+) -> URL? {
     let key = normalizedBrandLookupKey(name)
     guard !key.isEmpty else { return nil }
 
@@ -527,7 +530,7 @@ func brandLogoURL(for name: String) -> URL? {
         return nil
     }
 
-    if let domain = MerchantMatcher.shared.domain(for: key) {
+    if let domain = merchantMatcher.domain(for: key) {
         return logoDevDomainURL(domain: domain, token: logoDevToken)
     }
 
@@ -609,16 +612,33 @@ struct BrandLogoView: View {
     let fallbackIcon: String
     let fallbackColor: Color
     var showFallback: Bool = true
+    private let merchantMatcher: MerchantMatcher
 
     @State private var debouncedName = ""
     @State private var debounceTask: Task<Void, Never>? = nil
+
+    init(
+        name: String,
+        size: CGFloat,
+        fallbackIcon: String,
+        fallbackColor: Color,
+        showFallback: Bool = true,
+        merchantMatcher: MerchantMatcher = MerchantMatcher()
+    ) {
+        self.name = name
+        self.size = size
+        self.fallbackIcon = fallbackIcon
+        self.fallbackColor = fallbackColor
+        self.showFallback = showFallback
+        self.merchantMatcher = merchantMatcher
+    }
 
     var body: some View {
         Group {
             if debouncedName.isEmpty {
                 Color.clear
             } else {
-                AsyncImage(url: brandLogoURL(for: debouncedName)) { phase in
+                AsyncImage(url: brandLogoURL(for: debouncedName, merchantMatcher: merchantMatcher)) { phase in
                     switch phase {
                     case .success(let image):
                         image

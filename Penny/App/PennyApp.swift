@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct PennyApp: App {
-    @State private var container = AppContainer()
+    @State private var container = makeLiveAppContainer()
     @AppStorage("penny.preferences.languageCode") private var languageCode = AppLanguage.english.rawValue
     
     var body: some Scene {

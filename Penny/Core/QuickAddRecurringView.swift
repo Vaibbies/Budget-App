@@ -353,7 +353,7 @@ struct QuickAddRecurringView: View {
 }
 
 #Preview {
-    let container = AppContainer.preview
+    let container = makePreviewAppContainer()
     QuickAddRecurringView(prefillName: "Spotify", prefillPrice: 10.99)
         .preferredColorScheme(.dark)
         .environment(container.recurring)

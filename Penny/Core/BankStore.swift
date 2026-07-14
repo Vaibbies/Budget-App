@@ -41,41 +41,59 @@ struct BankAccountSnapshot: Identifiable {
 @MainActor
 @Observable
 final class BankStore {
-    private let data: any BankDataStore
-    private let mutations: TransactionMutationService
+    private let accountsRepository: any AccountsRepository
+    private let transactionsRepository: any TransactionsRepository
+    private let budgetRepository: any BudgetRepository
+    private let forecastRepository: any ForecastRepository
+    private let investmentsRepository: any InvestmentsRepository
+    private let accountsService: AccountsService
+    private let budgetService: BudgetSettingsService
+    private let investmentsService: InvestmentsService
 
     init(
-        data: any BankDataStore,
-        mutations: TransactionMutationService
+        accountsRepository: any AccountsRepository,
+        transactionsRepository: any TransactionsRepository,
+        budgetRepository: any BudgetRepository,
+        forecastRepository: any ForecastRepository,
+        investmentsRepository: any InvestmentsRepository,
+        accountsService: AccountsService,
+        budgetService: BudgetSettingsService,
+        investmentsService: InvestmentsService
     ) {
-        self.data = data
-        self.mutations = mutations
+        self.accountsRepository = accountsRepository
+        self.transactionsRepository = transactionsRepository
+        self.budgetRepository = budgetRepository
+        self.forecastRepository = forecastRepository
+        self.investmentsRepository = investmentsRepository
+        self.accountsService = accountsService
+        self.budgetService = budgetService
+        self.investmentsService = investmentsService
     }
 
-    var visibleAccounts: [Account] { data.visibleAccounts }
-    var investmentAccounts: [Account] { data.investmentAccounts }
-    var investmentHoldings: [InvestmentHolding] { data.investmentHoldings }
-    var savingsGoals: [SavingsGoal] { data.savingsGoals }
-    var cashFlowForecast: CashFlowForecast { data.cashFlowForecast }
-    var daysInCurrentMonth: Int { data.daysInCurrentMonth }
+    var visibleAccounts: [Account] { accountsRepository.visibleAccounts }
+    var investmentAccounts: [Account] { investmentsRepository.investmentAccounts }
+    var investmentHoldings: [InvestmentHolding] { investmentsRepository.investmentHoldings }
+    var savingsGoals: [SavingsGoal] { investmentsRepository.savingsGoals }
+    var cashFlowForecast: CashFlowForecast { forecastRepository.cashFlowForecast }
+    var daysInCurrentMonth: Int { budgetRepository.daysInCurrentMonth }
 
     var summary: BankSummarySnapshot {
         BankSummarySnapshot(
-            netWorthBalance: data.netWorthBalance,
-            totalAssetsBalance: data.totalAssetsBalance,
-            totalLiabilitiesBalance: data.totalLiabilitiesBalance,
-            configuredBudgetValue: data.configuredBudgetValue,
-            budgetMode: data.budgetMode,
-            dailySpent: data.dailySpent,
-            dailyRemaining: data.dailyRemaining,
-            dailyBudget: data.dailyBudget,
-            totalMonthlyBudget: data.totalMonthlyBudget,
-            liquidCashBalance: data.liquidCashBalance,
-            investedBalance: data.investedBalance,
-            totalDebtBalance: data.totalDebtBalance,
-            safeToSpendThisMonth: data.safeToSpendThisMonth,
-            monthlyNet: data.monthlyNet,
-            totalGoalProgress: data.totalGoalProgress
+            netWorthBalance: investmentsRepository.netWorthBalance,
+            totalAssetsBalance: investmentsRepository.totalAssetsBalance,
+            totalLiabilitiesBalance: investmentsRepository.totalLiabilitiesBalance,
+            configuredBudgetValue: budgetRepository.configuredBudgetValue,
+            budgetMode: budgetRepository.budgetMode,
+            dailySpent: transactionsRepository.dailySpent,
+            dailyRemaining: transactionsRepository.dailyRemaining,
+            dailyBudget: budgetRepository.dailyBudget,
+            totalMonthlyBudget: budgetRepository.totalMonthlyBudget,
+            liquidCashBalance: investmentsRepository.liquidCashBalance,
+            investedBalance: investmentsRepository.investedBalance,
+            totalDebtBalance: investmentsRepository.totalDebtBalance,
+            safeToSpendThisMonth: budgetRepository.safeToSpendThisMonth,
+            monthlyNet: investmentsRepository.monthlyNet,
+            totalGoalProgress: investmentsRepository.totalGoalProgress
         )
     }
 
@@ -84,11 +102,11 @@ final class BankStore {
     }
 
     var overallInvestmentPerformance: InvestmentPerformanceSummary {
-        data.investmentPerformance(forAccount: nil)
+        investmentsRepository.investmentPerformance(forAccount: nil)
     }
 
     var overallPortfolioAllocation: [PortfolioAllocationSlice] {
-        data.portfolioAllocation(forAccount: nil)
+        investmentsRepository.portfolioAllocation(forAccount: nil)
     }
 
     var accountSnapshots: [BankAccountSnapshot] {
@@ -98,48 +116,48 @@ final class BankStore {
     func accountSnapshot(for account: Account) -> BankAccountSnapshot {
         BankAccountSnapshot(
             account: account,
-            effectiveBalance: data.effectiveBalance(for: account),
-            monthSpend: data.monthlySpend(forAccount: account.id, inMonth: Date()),
-            monthIncome: data.monthlyIncome(forAccount: account.id, inMonth: Date()),
-            monthNet: data.monthlyNet(forAccount: account.id, inMonth: Date()),
-            transactionCount: data.transactions(forAccount: account.id, inMonth: Date()).count,
-            investmentSummary: data.investmentPerformance(forAccount: account.id)
+            effectiveBalance: investmentsRepository.effectiveBalance(for: account),
+            monthSpend: transactionsRepository.monthlySpend(forAccount: account.id, inMonth: Date()),
+            monthIncome: transactionsRepository.monthlyIncome(forAccount: account.id, inMonth: Date()),
+            monthNet: transactionsRepository.monthlyNet(forAccount: account.id, inMonth: Date()),
+            transactionCount: transactionsRepository.transactions(forAccount: account.id, inMonth: Date()).count,
+            investmentSummary: investmentsRepository.investmentPerformance(forAccount: account.id)
         )
     }
 
     func holdings(forAccount accountId: UUID) -> [InvestmentHolding] {
-        data.holdings(forAccount: accountId)
+        investmentsRepository.holdings(forAccount: accountId)
     }
 
     func investmentPerformance(forAccount accountId: UUID) -> InvestmentPerformanceSummary {
-        data.investmentPerformance(forAccount: accountId)
+        investmentsRepository.investmentPerformance(forAccount: accountId)
     }
 
     func portfolioAllocation(forAccount accountId: UUID) -> [PortfolioAllocationSlice] {
-        data.portfolioAllocation(forAccount: accountId)
+        investmentsRepository.portfolioAllocation(forAccount: accountId)
     }
 
     func normalizedBalance(for type: AccountType, enteredBalance: Double) -> Double {
-        data.normalizedBalance(for: type, enteredBalance: enteredBalance)
+        accountsRepository.normalizedBalance(for: type, enteredBalance: enteredBalance)
     }
 
     func upsertAccount(_ account: Account) {
-        mutations.upsertAccount(account)
+        accountsService.upsertAccount(account)
     }
 
     func deleteAccount(id: UUID) {
-        mutations.deleteAccount(id: id)
+        accountsService.deleteAccount(id: id)
     }
 
     func setBudget(mode: BudgetMode, value: Double) {
-        mutations.setBudget(mode: mode, value: value)
+        budgetService.setBudget(mode: mode, value: value)
     }
 
     func upsertInvestmentHolding(_ holding: InvestmentHolding) {
-        mutations.upsertInvestmentHolding(holding)
+        investmentsService.upsertHolding(holding)
     }
 
     func deleteInvestmentHolding(id: UUID) {
-        mutations.deleteInvestmentHolding(id: id)
+        investmentsService.deleteHolding(id: id)
     }
 }

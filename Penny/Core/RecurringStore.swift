@@ -4,25 +4,25 @@ import Observation
 @MainActor
 @Observable
 final class RecurringStore {
-    private let data: any RecurringDataStore
-    private let mutations: TransactionMutationService
+    private let repository: any RecurringRepository
+    private let recurringService: RecurringManagementService
 
     init(
-        data: any RecurringDataStore,
-        mutations: TransactionMutationService
+        repository: any RecurringRepository,
+        recurringService: RecurringManagementService
     ) {
-        self.data = data
-        self.mutations = mutations
+        self.repository = repository
+        self.recurringService = recurringService
     }
 
-    var subscriptions: [RecurringSubscription] { data.subscriptions }
+    var subscriptions: [RecurringSubscription] { repository.subscriptions }
 
     var activeSubscriptions: [RecurringSubscription] {
-        data.subscriptions.filter { $0.status == .active }
+        repository.subscriptions.filter { $0.status == .active }
     }
 
     func subscriptions(status: RecurringStatus) -> [RecurringSubscription] {
-        data.subscriptions.filter { $0.status == status }
+        repository.subscriptions.filter { $0.status == status }
     }
 
     func addSubscription(
@@ -30,7 +30,7 @@ final class RecurringStore {
         logInitialTransaction: Bool = true,
         initialTransactionDate: Date = Date()
     ) {
-        mutations.addSubscription(
+        recurringService.addSubscription(
             sub,
             logInitialTransaction: logInitialTransaction,
             initialTransactionDate: initialTransactionDate
@@ -38,14 +38,14 @@ final class RecurringStore {
     }
 
     func updateStatus(_ id: UUID, status: RecurringStatus) {
-        mutations.updateRecurringStatus(id, status: status)
+        recurringService.updateStatus(id, status: status)
     }
 
     func removeSubscription(id: UUID) {
-        mutations.removeSubscription(id: id)
+        recurringService.removeSubscription(id: id)
     }
 
     func syncRecurringTransactions() {
-        mutations.syncRecurringTransactions()
+        recurringService.syncRecurringTransactions()
     }
 }
