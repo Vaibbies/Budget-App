@@ -35,6 +35,16 @@
 			path = Penny;
 			sourceTree = "<group>";
 		};
+		F0A100012F32A78E00E3B155 /* PennyTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PennyTests;
+			sourceTree = "<group>";
+		};
+		F0A100022F32A78E00E3B155 /* PennyUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PennyUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +76,8 @@
 			isa = PBXGroup;
 			children = (
 				C23B70012F32A78D00E3B155 /* Penny */,
+				F0A100012F32A78E00E3B155 /* PennyTests */,
+				F0A100022F32A78E00E3B155 /* PennyUITests */,
 				C23B70002F32A78D00E3B155 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -118,6 +130,9 @@
 			dependencies = (
 				C23B700E2F32A78E00E3B155 /* PBXTargetDependency */,
 			);
+			fileSystemSynchronizedGroups = (
+				F0A100012F32A78E00E3B155 /* PennyTests */,
+			);
 			name = PennyTests;
 			packageProductDependencies = (
 			);
@@ -137,6 +152,9 @@
 			);
 			dependencies = (
 				C23B70182F32A78E00E3B155 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				F0A100022F32A78E00E3B155 /* PennyUITests */,
 			);
 			name = PennyUITests;
 			packageProductDependencies = (
